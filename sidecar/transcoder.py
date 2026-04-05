@@ -263,8 +263,8 @@ class ABRTranscoder:
         if decode:
             parts.extend(decode.split())
 
-        # Input
-        parts.extend(["-i", input_path])
+        # Input with timestamp regeneration
+        parts.extend(["-fflags", "+genpts+discardcorrupt", "-i", input_path])
 
         # Duration limit (after input)
         if duration_ms is not None and duration_ms > 0:
@@ -286,7 +286,9 @@ class ABRTranscoder:
         parts.extend(["-c:a", "aac", "-b:a", "128k", "-ac", "2"])
 
         # Output format: MPEG-TS for HLS segment compatibility
-        parts.extend(["-f", "mpegts", output_path])
+        # -muxdelay 0 -muxpreload 0 prevent muxer timestamp delays
+        # -mpegts_copyts 1 preserves source timestamps for seamless segment joining
+        parts.extend(["-muxdelay", "0", "-muxpreload", "0", "-f", "mpegts", "-mpegts_copyts", "1", output_path])
 
         return parts
 
