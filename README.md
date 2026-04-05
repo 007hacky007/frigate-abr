@@ -101,8 +101,8 @@ services:
       - ./frigate-abr/overlay/s6/abr-sidecar:/etc/s6-overlay/s6-rc.d/abr-sidecar:ro
 
       # Register services in s6 pipeline
-      - ./frigate-abr/overlay/s6/user-contents/abr-patch-pipeline:/etc/s6-overlay/s6-rc.d/user/contents.d/abr-patch-pipeline:ro
-      - ./frigate-abr/overlay/s6/user-contents/abr-sidecar-pipeline:/etc/s6-overlay/s6-rc.d/user/contents.d/abr-sidecar-pipeline:ro
+      - ./frigate-abr/overlay/s6/user-contents/abr-patch:/etc/s6-overlay/s6-rc.d/user/contents.d/abr-patch:ro
+      - ./frigate-abr/overlay/s6/user-contents/abr-sidecar:/etc/s6-overlay/s6-rc.d/user/contents.d/abr-sidecar:ro
 
       # Make nginx wait for the patch to apply
       - ./frigate-abr/overlay/s6/nginx-deps/abr-patch:/etc/s6-overlay/s6-rc.d/nginx/dependencies.d/abr-patch:ro

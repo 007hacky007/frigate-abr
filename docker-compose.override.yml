@@ -26,8 +26,8 @@ services:
       - ./frigate-abr/overlay/s6/abr-sidecar:/etc/s6-overlay/s6-rc.d/abr-sidecar:ro
 
       # Register services in the s6 user pipeline
-      - ./frigate-abr/overlay/s6/user-contents/abr-patch-pipeline:/etc/s6-overlay/s6-rc.d/user/contents.d/abr-patch-pipeline:ro
-      - ./frigate-abr/overlay/s6/user-contents/abr-sidecar-pipeline:/etc/s6-overlay/s6-rc.d/user/contents.d/abr-sidecar-pipeline:ro
+      - ./frigate-abr/overlay/s6/user-contents/abr-patch:/etc/s6-overlay/s6-rc.d/user/contents.d/abr-patch:ro
+      - ./frigate-abr/overlay/s6/user-contents/abr-sidecar:/etc/s6-overlay/s6-rc.d/user/contents.d/abr-sidecar:ro
 
       # Add abr-patch as a dependency of nginx (so nginx waits for the patch)
       - ./frigate-abr/overlay/s6/nginx-deps/abr-patch:/etc/s6-overlay/s6-rc.d/nginx/dependencies.d/abr-patch:ro
