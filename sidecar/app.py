@@ -1,5 +1,6 @@
 """ABR sidecar service for Frigate - FastAPI application."""
 
+import asyncio
 import logging
 import os
 from contextlib import asynccontextmanager
