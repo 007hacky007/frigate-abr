@@ -35,7 +35,7 @@
 
         console.log("[ABR] Enabled with tiers:", cfg.tiers.map(function (t) { return t.name; }));
 
-        interceptHlsLoadSource();
+        interceptFetch();
         interceptWebSocket();
         observePlayerMounts();
       })
@@ -52,38 +52,40 @@
     });
   }
 
-  // --- Recording ABR: Intercept HLS.loadSource ---
+  // --- Recording ABR: Intercept fetch for VOD URLs ---
 
-  function interceptHlsLoadSource() {
-    // Wait for Hls to be available (hls.js is loaded async by the app)
-    var checkInterval = setInterval(function () {
-      if (typeof Hls === "undefined") return;
-      clearInterval(checkInterval);
-
-      var origLoadSource = Hls.prototype.loadSource;
-      Hls.prototype.loadSource = function (url) {
-        try {
-          var quality = getRecordingQuality();
-          if (quality !== "original" && isVodUrl(url)) {
-            var abrUrl = rewriteVodUrl(url);
-            console.log("[ABR] Rewriting HLS source:", url, "->", abrUrl);
-            return origLoadSource.call(this, abrUrl);
+  function interceptFetch() {
+    // hls.js is loaded as an ES module (not global), so we can't patch
+    // Hls.prototype.loadSource. Instead, intercept fetch() which hls.js
+    // uses internally to load playlists and segments.
+    // We only rewrite the master.m3u8 request - hls.js then follows the
+    // ABR master playlist's variant URLs automatically.
+    var origFetch = window.fetch;
+    window.fetch = function (input, init) {
+      try {
+        var url = typeof input === "string" ? input : (input && input.url ? input.url : "");
+        var quality = getRecordingQuality();
+        if (quality !== "original" && isVodMasterUrl(url)) {
+          var abrUrl = rewriteVodUrl(url);
+          console.log("[ABR] Rewriting VOD fetch:", url, "->", abrUrl);
+          if (typeof input === "string") {
+            input = abrUrl;
+          } else if (input && input.url) {
+            input = new Request(abrUrl, input);
           }
-        } catch (e) {
-          console.warn("[ABR] HLS intercept error:", e);
         }
-        return origLoadSource.call(this, url);
-      };
-
-      console.log("[ABR] HLS loadSource intercepted");
-    }, 500);
-
-    // Give up after 30 seconds
-    setTimeout(function () { clearInterval(checkInterval); }, 30000);
+      } catch (e) {
+        console.warn("[ABR] fetch intercept error:", e);
+      }
+      return origFetch.call(window, input, init);
+    };
+    console.log("[ABR] fetch intercepted for VOD URL rewriting");
   }
 
-  function isVodUrl(url) {
-    return url && /\/vod\/[^/]+\/start\//.test(url) && url.indexOf("/abr/") === -1;
+  function isVodMasterUrl(url) {
+    // Only rewrite the master.m3u8 request, not segment or index requests.
+    // hls.js will follow the variant URLs from the ABR master playlist.
+    return url && /\/vod\/[^/]+\/start\/.*master\.m3u8/.test(url) && url.indexOf("/abr/") === -1;
   }
 
   function rewriteVodUrl(url) {
