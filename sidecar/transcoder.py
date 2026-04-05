@@ -161,7 +161,7 @@ class ABRTranscoder:
         key = f"{recording_path}:{tier.name}:{clip_from_ms}:{duration_ms}"
         h = hashlib.sha256(key.encode()).hexdigest()[:16]
         basename = Path(recording_path).stem
-        return self.cache_dir / f"{basename}_{tier.name}_{h}.mp4"
+        return self.cache_dir / f"{basename}_{tier.name}_{h}.ts"
 
     def is_cached(
         self,
@@ -285,8 +285,8 @@ class ABRTranscoder:
         # Audio: transcode to AAC if present
         parts.extend(["-c:a", "aac", "-b:a", "128k", "-ac", "2"])
 
-        # Output format
-        parts.extend(["-movflags", "+faststart", "-f", "mp4", output_path])
+        # Output format: MPEG-TS for HLS segment compatibility
+        parts.extend(["-f", "mpegts", output_path])
 
         return parts
 

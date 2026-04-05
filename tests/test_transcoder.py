@@ -91,11 +91,11 @@ class TestCachePath:
         p2 = t.cache_path_for("/recordings/a.mp4", tier, clip_from_ms=5000, duration_ms=10000)
         assert p1 != p2
 
-    def test_path_is_mp4(self, tmp_path):
+    def test_path_is_ts(self, tmp_path):
         t = ABRTranscoder("/usr/bin/ffmpeg", "default", 0, str(tmp_path))
         tier = QualityTier("720p", 1280, 720, "2000k")
         p = t.cache_path_for("/recordings/a.mp4", tier)
-        assert str(p).endswith(".mp4")
+        assert str(p).endswith(".ts")
 
     def test_path_contains_tier_name(self, tmp_path):
         t = ABRTranscoder("/usr/bin/ffmpeg", "default", 0, str(tmp_path))
@@ -166,12 +166,8 @@ class TestBuildCmd:
         cmd_str = " ".join(cmd)
         assert "libx264" in cmd_str
 
-    def test_output_format_mp4(self):
-        cmd = self.transcoder._build_cmd("/in.mp4", "/out.mp4", self.tier)
+    def test_output_format_mpegts(self):
+        cmd = self.transcoder._build_cmd("/in.mp4", "/out.ts", self.tier)
         assert "-f" in cmd
         f_idx = cmd.index("-f")
-        assert cmd[f_idx + 1] == "mp4"
-
-    def test_faststart(self):
-        cmd = self.transcoder._build_cmd("/in.mp4", "/out.mp4", self.tier)
-        assert "+faststart" in cmd
+        assert cmd[f_idx + 1] == "mpegts"

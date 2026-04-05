@@ -97,21 +97,17 @@
   }
 
   function isVodUrl(url) {
-    // Match any request under /vod/ that isn't already rewritten to /vod_abr/.
-    // We rewrite ALL vod requests (master, index, segments) because the entire
-    // HLS session must go through the ABR nginx-vod-module location.
-    return url && /\/vod\/[^/]+\/start\//.test(url) && url.indexOf("/vod_abr/") === -1;
+    // Only match the initial master.m3u8 request from hls.js.
+    // We rewrite it to our sidecar's HLS endpoint which generates its own
+    // playlist with segment URLs pointing back to the sidecar.
+    return url && /\/vod\/[^/]+\/start\/[^/]+\/end\/[^/]+\/master\.m3u8/.test(url) && url.indexOf("/abr/") === -1;
   }
 
   function rewriteVodUrl(url) {
     // /vod/{camera}/start/{ts}/end/{ts}/master.m3u8
-    // -> /vod_abr/{camera}/start/{ts}/end/{ts}/master.m3u8?quality=720p
-    // The quality parameter is only needed on master.m3u8 (nginx-vod-module
-    // passes it to the sidecar upstream). Segment requests don't need it
-    // but it doesn't hurt to include it.
+    // -> /abr/hls/{camera}/start/{ts}/end/{ts}/playlist.m3u8?quality=720p
     var quality = getRecordingQuality();
-    var newUrl = url.replace(/\/vod\//, "/vod_abr/");
-    // Add quality parameter
+    var newUrl = url.replace(/\/vod\/([^/]+)\/start\/([^/]+)\/end\/([^/]+)\/master\.m3u8/, "/abr/hls/$1/start/$2/end/$3/playlist.m3u8");
     if (newUrl.indexOf("?") === -1) {
       newUrl += "?quality=" + quality;
     } else {

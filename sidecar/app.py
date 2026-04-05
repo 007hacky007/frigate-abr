@@ -296,26 +296,24 @@ async def debug_transcode(camera: str = "vchod", quality: str = "480p"):
     return diag
 
 
-@app.get("/abr/vod_abr/{camera_name}/start/{start_ts}/end/{end_ts}")
-async def vod_abr_mapped(
-    camera_name: str, start_ts: float, end_ts: float, quality: str = "original"
+@app.get("/abr/hls/{camera_name}/start/{start_ts}/end/{end_ts}/playlist.m3u8")
+async def vod_abr_playlist(
+    camera_name: str, start_ts: float, end_ts: float, quality: str = "480p"
 ):
-    """Serve VOD manifest for a specific quality tier.
+    """Generate an HLS VOD playlist for a specific quality tier.
 
-    Fetches segment info from Frigate's VOD API, transcodes segments on-demand,
-    and returns a modified manifest pointing to transcoded files.
+    Bypasses nginx-vod-module entirely. Fetches segment info from Frigate's
+    VOD API and generates a proper m3u8 playlist where each segment points to
+    our on-demand transcoding endpoint. Segments are transcoded one at a time
+    as hls.js requests them.
     """
-    if quality == "original":
-        return await _proxy_frigate_vod(camera_name, start_ts, end_ts)
-
-    if not transcoder:
-        raise HTTPException(503, "ABR transcoder not initialized")
+    if not transcoder or not tiers:
+        raise HTTPException(503, "ABR not initialized")
 
     tier = _find_tier(quality)
     if not tier:
         raise HTTPException(400, f"Unknown quality tier: {quality}")
 
-    # Fetch segment info from Frigate's VOD API
     vod_data = await _fetch_frigate_vod(camera_name, start_ts, end_ts)
     if not vod_data:
         raise HTTPException(404, "No recordings found")
@@ -325,51 +323,83 @@ async def vod_abr_mapped(
         raise HTTPException(404, "No clips in VOD response")
 
     clips = sequences[0]["clips"]
-    new_clips = []
-    new_durations = []
+    durations = vod_data.get("durations", [])
+
+    # Build HLS VOD playlist
+    lines = [
+        "#EXTM3U",
+        "#EXT-X-VERSION:3",
+        "#EXT-X-TARGETDURATION:" + str(max(int(d / 1000) + 1 for d in durations) if durations else 10),
+        "#EXT-X-MEDIA-SEQUENCE:0",
+        "#EXT-X-PLAYLIST-TYPE:VOD",
+    ]
+
+    base_url = f"/abr/hls/{camera_name}/start/{int(start_ts)}/end/{int(end_ts)}"
 
     for i, clip in enumerate(clips):
-        recording_path = clip.get("path")
-        if not recording_path:
-            continue
+        if i >= len(durations):
+            break
+        duration_s = durations[i] / 1000.0
+        lines.append(f"#EXTINF:{duration_s:.3f},")
+        lines.append(f"{base_url}/segment/{i}.ts?quality={quality}")
 
-        # Extract clipFrom and duration from Frigate's VOD response.
-        # These define the exact portion of the recording file to transcode.
-        clip_from_ms = clip.get("clipFrom")
-        duration_ms = vod_data["durations"][i] if i < len(vod_data.get("durations", [])) else None
+    lines.append("#EXT-X-ENDLIST")
 
-        if not duration_ms:
-            continue
+    return PlainTextResponse(
+        "\n".join(lines) + "\n",
+        media_type="application/vnd.apple.mpegurl",
+    )
 
-        # Transcode this segment (with clip boundaries)
-        transcoded_path = await transcoder.get_or_transcode(
-            recording_path, tier, clip_from_ms=clip_from_ms, duration_ms=duration_ms
-        )
-        if not transcoded_path:
-            logger.warning("Skipping segment %s - transcode failed", recording_path)
-            continue
 
-        # Build new clip pointing to transcoded file.
-        # No clipFrom needed - we already trimmed during transcoding.
-        new_clip = {
-            "type": "source",
-            "path": transcoded_path,
-            "keyFrameDurations": [duration_ms],
-        }
-        new_durations.append(duration_ms)
-        new_clips.append(new_clip)
+@app.get("/abr/hls/{camera_name}/start/{start_ts}/end/{end_ts}/segment/{index}.ts")
+async def vod_abr_segment(
+    camera_name: str, start_ts: float, end_ts: float, index: int, quality: str = "480p"
+):
+    """Transcode and serve a single recording segment as MPEG-TS.
 
-    if not new_clips:
-        raise HTTPException(404, "No segments could be transcoded")
+    Called by hls.js when it needs a specific segment from the playlist.
+    Transcodes on-demand and caches the result.
+    """
+    if not transcoder:
+        raise HTTPException(503, "ABR transcoder not initialized")
 
-    return {
-        "cache": vod_data.get("cache", False),
-        "discontinuity": vod_data.get("discontinuity", False),
-        "consistentSequenceMediaInfo": True,
-        "durations": new_durations,
-        "segment_duration": max(new_durations),
-        "sequences": [{"clips": new_clips}],
-    }
+    tier = _find_tier(quality)
+    if not tier:
+        raise HTTPException(400, f"Unknown quality tier: {quality}")
+
+    # Get the clip info for this segment index
+    vod_data = await _fetch_frigate_vod(camera_name, start_ts, end_ts)
+    if not vod_data:
+        raise HTTPException(404, "No recordings found")
+
+    clips = vod_data.get("sequences", [{}])[0].get("clips", [])
+    durations = vod_data.get("durations", [])
+
+    if index >= len(clips) or index >= len(durations):
+        raise HTTPException(404, f"Segment {index} not found")
+
+    clip = clips[index]
+    recording_path = clip.get("path")
+    if not recording_path:
+        raise HTTPException(404, "No recording path for segment")
+
+    clip_from_ms = clip.get("clipFrom")
+    duration_ms = durations[index]
+
+    # Transcode this single segment (cached if already done)
+    transcoded_path = await transcoder.get_or_transcode(
+        recording_path, tier, clip_from_ms=clip_from_ms, duration_ms=duration_ms
+    )
+    if not transcoded_path:
+        raise HTTPException(500, "Transcoding failed")
+
+    # Serve the transcoded file
+    from fastapi.responses import FileResponse
+    return FileResponse(
+        transcoded_path,
+        media_type="video/mp2t",
+        headers={"Cache-Control": "public, max-age=3600"},
+    )
 
 
 @app.post("/abr/live/setup")

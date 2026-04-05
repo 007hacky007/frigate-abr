@@ -17,13 +17,16 @@ const ABR_VARIANT_PREFIX = "_abr_";
 function isVodUrl(url) {
   return (
     url &&
-    /\/vod\/[^/]+\/start\//.test(url) &&
-    url.indexOf("/vod_abr/") === -1
+    /\/vod\/[^/]+\/start\/[^/]+\/end\/[^/]+\/master\.m3u8/.test(url) &&
+    url.indexOf("/abr/") === -1
   );
 }
 
 function rewriteVodUrl(url, quality) {
-  var newUrl = url.replace(/\/vod\//, "/vod_abr/");
+  var newUrl = url.replace(
+    /\/vod\/([^/]+)\/start\/([^/]+)\/end\/([^/]+)\/master\.m3u8/,
+    "/abr/hls/$1/start/$2/end/$3/playlist.m3u8"
+  );
   if (newUrl.indexOf("?") === -1) {
     newUrl += "?quality=" + quality;
   } else {
@@ -61,27 +64,6 @@ describe("isVodUrl", () => {
     );
   });
 
-  it("matches index.m3u8 URLs", () => {
-    assert.equal(
-      isVodUrl("/vod/vchod/start/123/end/456/index-v1-a1.m3u8"),
-      true
-    );
-  });
-
-  it("matches segment URLs", () => {
-    assert.equal(
-      isVodUrl("/vod/vchod/start/123/end/456/seg-1-v1-a1.m4s"),
-      true
-    );
-  });
-
-  it("matches init segment URLs", () => {
-    assert.equal(
-      isVodUrl("/vod/vchod/start/123/end/456/init-v1-a1.mp4"),
-      true
-    );
-  });
-
   it("matches VOD URLs with full host", () => {
     assert.equal(
       isVodUrl(
@@ -91,9 +73,23 @@ describe("isVodUrl", () => {
     );
   });
 
+  it("rejects index.m3u8 (only master triggers rewrite)", () => {
+    assert.equal(
+      isVodUrl("/vod/vchod/start/123/end/456/index-v1-a1.m3u8"),
+      false
+    );
+  });
+
+  it("rejects segment URLs", () => {
+    assert.equal(
+      isVodUrl("/vod/vchod/start/123/end/456/seg-1-v1-a1.m4s"),
+      false
+    );
+  });
+
   it("rejects already-rewritten ABR URLs", () => {
     assert.equal(
-      isVodUrl("/vod_abr/vchod/start/123/end/456/master.m3u8"),
+      isVodUrl("/abr/hls/vchod/start/123/end/456/playlist.m3u8"),
       false
     );
   });
@@ -114,73 +110,63 @@ describe("isVodUrl", () => {
 // --- VOD URL Rewriting Tests ---
 
 describe("rewriteVodUrl", () => {
-  it("rewrites /vod/ to /vod_abr/ with quality parameter", () => {
+  it("rewrites /vod/ master to /abr/hls/ playlist with quality", () => {
     assert.equal(
       rewriteVodUrl("/vod/cam/start/1/end/2/master.m3u8", "720p"),
-      "/vod_abr/cam/start/1/end/2/master.m3u8?quality=720p"
-    );
-  });
-
-  it("rewrites segment URLs too", () => {
-    assert.equal(
-      rewriteVodUrl("/vod/cam/start/1/end/2/seg-5-v1-a1.m4s", "480p"),
-      "/vod_abr/cam/start/1/end/2/seg-5-v1-a1.m4s?quality=480p"
+      "/abr/hls/cam/start/1/end/2/playlist.m3u8?quality=720p"
     );
   });
 
   it("rewrites full URLs", () => {
     assert.equal(
       rewriteVodUrl("http://host:5000/vod/cam/start/1/end/2/master.m3u8", "1080p"),
-      "http://host:5000/vod_abr/cam/start/1/end/2/master.m3u8?quality=1080p"
+      "http://host:5000/abr/hls/cam/start/1/end/2/playlist.m3u8?quality=1080p"
     );
   });
 
-  it("only rewrites first /vod/ occurrence", () => {
+  it("handles camera names with underscores", () => {
     assert.equal(
-      rewriteVodUrl("/vod/vod_camera/start/1/end/2/master.m3u8", "720p"),
-      "/vod_abr/vod_camera/start/1/end/2/master.m3u8?quality=720p"
+      rewriteVodUrl("/vod/back_yard/start/1/end/2/master.m3u8", "720p"),
+      "/abr/hls/back_yard/start/1/end/2/playlist.m3u8?quality=720p"
     );
   });
 
   it("appends quality with & if URL already has query params", () => {
     assert.equal(
       rewriteVodUrl("/vod/cam/start/1/end/2/master.m3u8?token=abc", "720p"),
-      "/vod_abr/cam/start/1/end/2/master.m3u8?token=abc&quality=720p"
+      "/abr/hls/cam/start/1/end/2/playlist.m3u8?token=abc&quality=720p"
     );
   });
 });
 
 // --- Full VOD Flow Simulation ---
 
-describe("VOD ABR flow (nginx-vod-module integration)", () => {
-  it("rewrites all requests in an HLS session", () => {
-    // Simulate the full sequence of HLS requests
+describe("VOD ABR flow (on-demand segment transcoding)", () => {
+  it("only rewrites master.m3u8 to sidecar playlist", () => {
     var quality = "720p";
 
-    // 1. master.m3u8
+    // 1. master.m3u8 gets rewritten
     var master = "/vod/cam/start/100/end/200/master.m3u8";
     assert.ok(isVodUrl(master));
     var rewritten = rewriteVodUrl(master, quality);
-    assert.equal(rewritten, "/vod_abr/cam/start/100/end/200/master.m3u8?quality=720p");
+    assert.equal(rewritten, "/abr/hls/cam/start/100/end/200/playlist.m3u8?quality=720p");
 
-    // 2. After nginx-vod-module processes master, hls.js requests index
-    //    These come back as /vod_abr/ URLs from the playlist
-    var index = "/vod_abr/cam/start/100/end/200/index-v1-a1.m3u8";
-    assert.ok(!isVodUrl(index), "already-rewritten index should NOT be rewritten again");
-
-    // 3. Segments also come back as /vod_abr/ from the index playlist
-    var seg = "/vod_abr/cam/start/100/end/200/seg-1-v1-a1.m4s";
-    assert.ok(!isVodUrl(seg), "already-rewritten segment should NOT be rewritten again");
+    // 2. Sidecar playlist returns segment URLs like /abr/hls/.../segment/0.ts
+    //    These go directly to the sidecar, no interception needed
+    var seg = "/abr/hls/cam/start/100/end/200/segment/0.ts?quality=720p";
+    assert.ok(!isVodUrl(seg), "sidecar segment URL should NOT be rewritten");
   });
 
   it("does not rewrite when quality is original", () => {
-    // When quality is "original", isVodUrl still returns true but
-    // the caller checks quality before calling rewriteVodUrl.
-    // This test documents the expected caller behavior.
-    var quality = "original";
     var url = "/vod/cam/start/100/end/200/master.m3u8";
     assert.ok(isVodUrl(url));
-    // Caller should NOT call rewriteVodUrl when quality is "original"
+    // Caller checks quality !== "original" before calling rewriteVodUrl
+  });
+
+  it("does not rewrite index or segment requests from original /vod/", () => {
+    assert.ok(!isVodUrl("/vod/cam/start/100/end/200/index-v1-a1.m3u8"));
+    assert.ok(!isVodUrl("/vod/cam/start/100/end/200/seg-1-v1-a1.m4s"));
+    assert.ok(!isVodUrl("/vod/cam/start/100/end/200/init-v1-a1.mp4"));
   });
 });
 

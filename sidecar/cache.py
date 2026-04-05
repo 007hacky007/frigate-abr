@@ -34,7 +34,7 @@ class ABRCacheManager:
         """Return total size of cached files in bytes."""
         total = 0
         for f in self.cache_dir.iterdir():
-            if f.is_file() and f.suffix == ".mp4":
+            if f.is_file() and f.suffix in (".mp4", ".ts"):
                 total += f.stat().st_size
         return total
 
@@ -42,7 +42,7 @@ class ABRCacheManager:
         return self.get_cache_size_bytes() / (1024 * 1024 * 1024)
 
     def get_file_count(self) -> int:
-        return sum(1 for f in self.cache_dir.iterdir() if f.is_file() and f.suffix == ".mp4")
+        return sum(1 for f in self.cache_dir.iterdir() if f.is_file() and f.suffix in (".mp4", ".ts"))
 
     async def _cleanup_loop(self) -> None:
         """Periodic cleanup every 10 minutes."""
@@ -116,7 +116,7 @@ class ABRCacheManager:
         """Remove all cached files. Returns count removed."""
         count = 0
         for f in self.cache_dir.iterdir():
-            if f.is_file() and f.suffix == ".mp4":
+            if f.is_file() and f.suffix in (".mp4", ".ts"):
                 f.unlink(missing_ok=True)
                 count += 1
         return count
