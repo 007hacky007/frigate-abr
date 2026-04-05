@@ -194,40 +194,8 @@ async def get_stats():
     }
 
 
-@app.get("/abr/vod/{camera_name}/start/{start_ts}/end/{end_ts}/master.m3u8")
-async def vod_abr_master(camera_name: str, start_ts: float, end_ts: float):
-    """Generate HLS master playlist with multiple quality variants."""
-    if not transcoder or not tiers:
-        raise HTTPException(503, "ABR not initialized")
-
-    lines = ["#EXTM3U"]
-
-    # Add original quality variant (proxied to Frigate's native VOD)
-    lines.append(
-        '#EXT-X-STREAM-INF:BANDWIDTH=10000000,NAME="Original"'
-    )
-    lines.append(f"/vod/{camera_name}/start/{start_ts}/end/{end_ts}/index.m3u8")
-
-    # Add transcoded quality variants
-    for tier in tiers:
-        bw = _tier_bandwidth(tier)
-        lines.append(
-            f"#EXT-X-STREAM-INF:BANDWIDTH={bw},"
-            f"RESOLUTION={tier.width}x{tier.height},"
-            f'NAME="{tier.name}"'
-        )
-        lines.append(
-            f"/abr/vod/{camera_name}/start/{start_ts}/end/{end_ts}/index.m3u8?quality={tier.name}"
-        )
-
-    return PlainTextResponse(
-        "\n".join(lines) + "\n",
-        media_type="application/vnd.apple.mpegurl",
-    )
-
-
-@app.get("/abr/vod/{camera_name}/start/{start_ts}/end/{end_ts}/index.m3u8")
-async def vod_abr_quality(
+@app.get("/abr/vod_abr/{camera_name}/start/{start_ts}/end/{end_ts}")
+async def vod_abr_mapped(
     camera_name: str, start_ts: float, end_ts: float, quality: str = "original"
 ):
     """Serve VOD manifest for a specific quality tier.

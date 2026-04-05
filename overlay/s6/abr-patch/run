@@ -60,7 +60,24 @@ if grep -q "include base_path.conf;" "$NGINX_CONF"; then
         location /abr_cache/ {\
             internal;\
             alias /tmp/cache/abr/;\
-        }' "$NGINX_CONF" && echo "[ABR] Added /abr/ location blocks." \
+        }\
+\
+        # ABR VOD - uses nginx-vod-module with sidecar as upstream.\
+        # Sidecar transcodes recordings and returns JSON manifest with\
+        # transcoded file paths. nginx-vod-module generates proper HLS.\
+        location /vod_abr/ {\
+            include auth_request.conf;\
+            aio threads;\
+            vod hls;\
+            vod_hls_container_format fmp4;\
+            vod_upstream_location /abr;\
+            vod_align_segments_to_key_frames on;\
+            vod_manifest_segment_durations_mode accurate;\
+            vod_segment_duration 10000;\
+            add_header Cache-Control "no-store";\
+            expires off;\
+            keepalive_disable safari;\
+        }' "$NGINX_CONF" && echo "[ABR] Added /abr/ and /vod_abr/ location blocks." \
         || echo "[ABR] WARNING: Failed to add location blocks."
 else
     echo "[ABR] WARNING: Could not find base_path.conf include for location injection."

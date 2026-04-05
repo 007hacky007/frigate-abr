@@ -14,16 +14,22 @@ import { describe, it } from "node:test";
 
 const ABR_VARIANT_PREFIX = "_abr_";
 
-function isVodMasterUrl(url) {
+function isVodUrl(url) {
   return (
     url &&
-    /\/vod\/[^/]+\/start\/.*master\.m3u8/.test(url) &&
-    url.indexOf("/abr/") === -1
+    /\/vod\/[^/]+\/start\//.test(url) &&
+    url.indexOf("/vod_abr/") === -1
   );
 }
 
-function rewriteVodUrl(url) {
-  return url.replace(/\/vod\//, "/abr/vod/");
+function rewriteVodUrl(url, quality) {
+  var newUrl = url.replace(/\/vod\//, "/vod_abr/");
+  if (newUrl.indexOf("?") === -1) {
+    newUrl += "?quality=" + quality;
+  } else {
+    newUrl += "&quality=" + quality;
+  }
+  return newUrl;
 }
 
 function isLiveWsUrl(url) {
@@ -34,7 +40,7 @@ function isLiveWsUrl(url) {
   );
 }
 
-function rewriteLiveWsUrl(url, quality, tierNames) {
+function rewriteLiveWsUrl(url, quality) {
   var tierSuffix = ABR_VARIANT_PREFIX + quality;
   return url.replace(/([?&]src=)([^&]+)/, function (match, prefix, camera) {
     var abrIdx = camera.indexOf(ABR_VARIANT_PREFIX);
@@ -47,17 +53,38 @@ function rewriteLiveWsUrl(url, quality, tierNames) {
 
 // --- VOD URL Detection Tests ---
 
-describe("isVodMasterUrl", () => {
-  it("matches standard VOD master.m3u8 URLs", () => {
+describe("isVodUrl", () => {
+  it("matches master.m3u8 URLs", () => {
     assert.equal(
-      isVodMasterUrl("/vod/vchod/start/123/end/456/master.m3u8"),
+      isVodUrl("/vod/vchod/start/123/end/456/master.m3u8"),
+      true
+    );
+  });
+
+  it("matches index.m3u8 URLs", () => {
+    assert.equal(
+      isVodUrl("/vod/vchod/start/123/end/456/index-v1-a1.m3u8"),
+      true
+    );
+  });
+
+  it("matches segment URLs", () => {
+    assert.equal(
+      isVodUrl("/vod/vchod/start/123/end/456/seg-1-v1-a1.m4s"),
+      true
+    );
+  });
+
+  it("matches init segment URLs", () => {
+    assert.equal(
+      isVodUrl("/vod/vchod/start/123/end/456/init-v1-a1.mp4"),
       true
     );
   });
 
   it("matches VOD URLs with full host", () => {
     assert.equal(
-      isVodMasterUrl(
+      isVodUrl(
         "http://192.168.1.1:5000/vod/camera1/start/100/end/200/master.m3u8"
       ),
       true
@@ -66,60 +93,94 @@ describe("isVodMasterUrl", () => {
 
   it("rejects already-rewritten ABR URLs", () => {
     assert.equal(
-      isVodMasterUrl("/abr/vod/vchod/start/123/end/456/master.m3u8"),
-      false
-    );
-  });
-
-  it("rejects index.m3u8 (not master)", () => {
-    assert.equal(
-      isVodMasterUrl("/vod/vchod/start/123/end/456/index.m3u8"),
-      false
-    );
-  });
-
-  it("rejects segment requests", () => {
-    assert.equal(
-      isVodMasterUrl("/vod/vchod/start/123/end/456/seg-1-v1-a1.m4s"),
+      isVodUrl("/vod_abr/vchod/start/123/end/456/master.m3u8"),
       false
     );
   });
 
   it("rejects non-VOD URLs", () => {
-    assert.equal(isVodMasterUrl("/api/config"), false);
-    assert.equal(isVodMasterUrl("/abr/config"), false);
-    assert.equal(isVodMasterUrl("/live/mse/api/ws?src=cam"), false);
+    assert.equal(isVodUrl("/api/config"), false);
+    assert.equal(isVodUrl("/abr/config"), false);
+    assert.equal(isVodUrl("/live/mse/api/ws?src=cam"), false);
   });
 
   it("rejects empty and null", () => {
-    assert.ok(!isVodMasterUrl(""));
-    assert.ok(!isVodMasterUrl(null));
-    assert.ok(!isVodMasterUrl(undefined));
+    assert.ok(!isVodUrl(""));
+    assert.ok(!isVodUrl(null));
+    assert.ok(!isVodUrl(undefined));
   });
 });
 
 // --- VOD URL Rewriting Tests ---
 
 describe("rewriteVodUrl", () => {
-  it("rewrites /vod/ to /abr/vod/", () => {
+  it("rewrites /vod/ to /vod_abr/ with quality parameter", () => {
     assert.equal(
-      rewriteVodUrl("/vod/cam/start/1/end/2/master.m3u8"),
-      "/abr/vod/cam/start/1/end/2/master.m3u8"
+      rewriteVodUrl("/vod/cam/start/1/end/2/master.m3u8", "720p"),
+      "/vod_abr/cam/start/1/end/2/master.m3u8?quality=720p"
+    );
+  });
+
+  it("rewrites segment URLs too", () => {
+    assert.equal(
+      rewriteVodUrl("/vod/cam/start/1/end/2/seg-5-v1-a1.m4s", "480p"),
+      "/vod_abr/cam/start/1/end/2/seg-5-v1-a1.m4s?quality=480p"
     );
   });
 
   it("rewrites full URLs", () => {
     assert.equal(
-      rewriteVodUrl("http://host:5000/vod/cam/start/1/end/2/master.m3u8"),
-      "http://host:5000/abr/vod/cam/start/1/end/2/master.m3u8"
+      rewriteVodUrl("http://host:5000/vod/cam/start/1/end/2/master.m3u8", "1080p"),
+      "http://host:5000/vod_abr/cam/start/1/end/2/master.m3u8?quality=1080p"
     );
   });
 
   it("only rewrites first /vod/ occurrence", () => {
     assert.equal(
-      rewriteVodUrl("/vod/vod_camera/start/1/end/2/master.m3u8"),
-      "/abr/vod/vod_camera/start/1/end/2/master.m3u8"
+      rewriteVodUrl("/vod/vod_camera/start/1/end/2/master.m3u8", "720p"),
+      "/vod_abr/vod_camera/start/1/end/2/master.m3u8?quality=720p"
     );
+  });
+
+  it("appends quality with & if URL already has query params", () => {
+    assert.equal(
+      rewriteVodUrl("/vod/cam/start/1/end/2/master.m3u8?token=abc", "720p"),
+      "/vod_abr/cam/start/1/end/2/master.m3u8?token=abc&quality=720p"
+    );
+  });
+});
+
+// --- Full VOD Flow Simulation ---
+
+describe("VOD ABR flow (nginx-vod-module integration)", () => {
+  it("rewrites all requests in an HLS session", () => {
+    // Simulate the full sequence of HLS requests
+    var quality = "720p";
+
+    // 1. master.m3u8
+    var master = "/vod/cam/start/100/end/200/master.m3u8";
+    assert.ok(isVodUrl(master));
+    var rewritten = rewriteVodUrl(master, quality);
+    assert.equal(rewritten, "/vod_abr/cam/start/100/end/200/master.m3u8?quality=720p");
+
+    // 2. After nginx-vod-module processes master, hls.js requests index
+    //    These come back as /vod_abr/ URLs from the playlist
+    var index = "/vod_abr/cam/start/100/end/200/index-v1-a1.m3u8";
+    assert.ok(!isVodUrl(index), "already-rewritten index should NOT be rewritten again");
+
+    // 3. Segments also come back as /vod_abr/ from the index playlist
+    var seg = "/vod_abr/cam/start/100/end/200/seg-1-v1-a1.m4s";
+    assert.ok(!isVodUrl(seg), "already-rewritten segment should NOT be rewritten again");
+  });
+
+  it("does not rewrite when quality is original", () => {
+    // When quality is "original", isVodUrl still returns true but
+    // the caller checks quality before calling rewriteVodUrl.
+    // This test documents the expected caller behavior.
+    var quality = "original";
+    var url = "/vod/cam/start/100/end/200/master.m3u8";
+    assert.ok(isVodUrl(url));
+    // Caller should NOT call rewriteVodUrl when quality is "original"
   });
 });
 
@@ -165,8 +226,7 @@ describe("rewriteLiveWsUrl", () => {
     assert.equal(
       rewriteLiveWsUrl(
         "ws://host/live/mse/api/ws?src=front_door",
-        "720p",
-        ["1080p", "720p", "480p"]
+        "720p"
       ),
       "ws://host/live/mse/api/ws?src=front_door_abr_720p"
     );
@@ -176,8 +236,7 @@ describe("rewriteLiveWsUrl", () => {
     assert.equal(
       rewriteLiveWsUrl(
         "ws://host/live/mse/api/ws?src=cam_abr_1080p",
-        "480p",
-        ["1080p", "720p", "480p"]
+        "480p"
       ),
       "ws://host/live/mse/api/ws?src=cam_abr_480p"
     );
@@ -187,8 +246,7 @@ describe("rewriteLiveWsUrl", () => {
     assert.equal(
       rewriteLiveWsUrl(
         "ws://host/live/webrtc/api/ws?src=cam",
-        "480p",
-        ["1080p", "720p", "480p"]
+        "480p"
       ),
       "ws://host/live/webrtc/api/ws?src=cam_abr_480p"
     );
@@ -198,20 +256,17 @@ describe("rewriteLiveWsUrl", () => {
     assert.equal(
       rewriteLiveWsUrl(
         "ws://host/live/mse/api/ws?src=back_yard_camera",
-        "720p",
-        ["1080p", "720p", "480p"]
+        "720p"
       ),
       "ws://host/live/mse/api/ws?src=back_yard_camera_abr_720p"
     );
   });
 
   it("handles camera names that look like tier names", () => {
-    // Camera named "driveway_1080p" should NOT be confused with a variant
     assert.equal(
       rewriteLiveWsUrl(
         "ws://host/live/mse/api/ws?src=driveway_1080p",
-        "720p",
-        ["1080p", "720p", "480p"]
+        "720p"
       ),
       "ws://host/live/mse/api/ws?src=driveway_1080p_abr_720p"
     );
@@ -221,8 +276,7 @@ describe("rewriteLiveWsUrl", () => {
     assert.equal(
       rewriteLiveWsUrl(
         "ws://host/live/mse/api/ws?src=cam&video=all&audio=all",
-        "720p",
-        []
+        "720p"
       ),
       "ws://host/live/mse/api/ws?src=cam_abr_720p&video=all&audio=all"
     );

@@ -62,7 +62,7 @@
     XMLHttpRequest.prototype.open = function (method, url) {
       try {
         var quality = getRecordingQuality();
-        if (quality !== "original" && typeof url === "string" && isVodMasterUrl(url)) {
+        if (quality !== "original" && typeof url === "string" && isVodUrl(url)) {
           var abrUrl = rewriteVodUrl(url);
           console.log("[ABR] Rewriting VOD XHR:", url, "->", abrUrl);
           arguments[1] = abrUrl;
@@ -78,7 +78,7 @@
       try {
         var url = typeof input === "string" ? input : (input && input.url ? input.url : "");
         var quality = getRecordingQuality();
-        if (quality !== "original" && isVodMasterUrl(url)) {
+        if (quality !== "original" && isVodUrl(url)) {
           var abrUrl = rewriteVodUrl(url);
           console.log("[ABR] Rewriting VOD fetch:", url, "->", abrUrl);
           if (typeof input === "string") {
@@ -96,16 +96,28 @@
     console.log("[ABR] XHR and fetch intercepted for VOD URL rewriting");
   }
 
-  function isVodMasterUrl(url) {
-    // Only rewrite the master.m3u8 request, not segment or index requests.
-    // hls.js will follow the variant URLs from the ABR master playlist.
-    return url && /\/vod\/[^/]+\/start\/.*master\.m3u8/.test(url) && url.indexOf("/abr/") === -1;
+  function isVodUrl(url) {
+    // Match any request under /vod/ that isn't already rewritten to /vod_abr/.
+    // We rewrite ALL vod requests (master, index, segments) because the entire
+    // HLS session must go through the ABR nginx-vod-module location.
+    return url && /\/vod\/[^/]+\/start\//.test(url) && url.indexOf("/vod_abr/") === -1;
   }
 
   function rewriteVodUrl(url) {
     // /vod/{camera}/start/{ts}/end/{ts}/master.m3u8
-    // -> /abr/vod/{camera}/start/{ts}/end/{ts}/master.m3u8
-    return url.replace(/\/vod\//, "/abr/vod/");
+    // -> /vod_abr/{camera}/start/{ts}/end/{ts}/master.m3u8?quality=720p
+    // The quality parameter is only needed on master.m3u8 (nginx-vod-module
+    // passes it to the sidecar upstream). Segment requests don't need it
+    // but it doesn't hurt to include it.
+    var quality = getRecordingQuality();
+    var newUrl = url.replace(/\/vod\//, "/vod_abr/");
+    // Add quality parameter
+    if (newUrl.indexOf("?") === -1) {
+      newUrl += "?quality=" + quality;
+    } else {
+      newUrl += "&quality=" + quality;
+    }
+    return newUrl;
   }
 
   // --- Live ABR: Intercept WebSocket connections ---
