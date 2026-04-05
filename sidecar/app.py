@@ -27,6 +27,11 @@ CONFIG_PATH = os.environ.get("ABR_CONFIG", "/opt/frigate-abr/config.yml")
 # Shared httpx client (initialized in lifespan)
 http_client: httpx.AsyncClient | None = None
 
+# In-memory cache for VOD metadata (avoids re-fetching from Frigate for every segment)
+# Key: "camera:start:end", Value: (timestamp, vod_data)
+_vod_cache: dict[str, tuple[float, dict]] = {}
+_VOD_CACHE_TTL = 300  # 5 minutes
+
 
 def load_config() -> dict:
     with open(CONFIG_PATH) as f:
@@ -434,14 +439,21 @@ async def _fetch_frigate_vod(
 ) -> dict | None:
     """Fetch VOD manifest data from Frigate's internal API (port 5001).
 
-    Note: Frigate's internal API does NOT use the /api/ prefix.
-    The /api/ prefix is only used by nginx's external routing.
+    Results are cached in memory to avoid repeated API calls when serving
+    individual segments from the same recording range.
     """
-    # Use int timestamps to avoid .0 suffix in URL
+    import time as _time
+
+    cache_key = f"{camera_name}:{int(start_ts)}:{int(end_ts)}"
+    now = _time.time()
+
+    # Check cache
+    if cache_key in _vod_cache:
+        cached_time, cached_data = _vod_cache[cache_key]
+        if now - cached_time < _VOD_CACHE_TTL:
+            return cached_data
+
     url = f"{FRIGATE_API}/vod/{camera_name}/start/{int(start_ts)}/end/{int(end_ts)}"
-    # Frigate's API requires auth headers even on the internal port.
-    # nginx normally sets these via auth subrequest. We pass admin
-    # credentials since this is a same-container internal call.
     headers = {"remote-user": "admin", "remote-role": "admin"}
     try:
         resp = await http_client.get(url, headers=headers)
@@ -452,7 +464,14 @@ async def _fetch_frigate_vod(
             logger.error("Frigate VOD returned %d for %s: %s", resp.status_code, url, resp.text[:200])
             return None
         resp.raise_for_status()
-        return resp.json()
+        data = resp.json()
+        # Cache the result
+        _vod_cache[cache_key] = (now, data)
+        # Evict old entries
+        for k in list(_vod_cache):
+            if now - _vod_cache[k][0] > _VOD_CACHE_TTL:
+                del _vod_cache[k]
+        return data
     except httpx.HTTPError:
         logger.exception("Failed to fetch Frigate VOD for %s at %s", camera_name, url)
         return None

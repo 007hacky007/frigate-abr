@@ -40,8 +40,8 @@ HWACCEL_TEMPLATES = {
     },
     "preset-vaapi": {
         "decode": "-hwaccel vaapi -hwaccel_device {gpu} -hwaccel_output_format vaapi -extra_hw_frames 16",
-        "scale": "-vf hwdownload,format=nv12,scale={w}:{h}:force_original_aspect_ratio=decrease:force_divisible_by=2,format=nv12,hwupload",
-        "encode": "-c:v h264_vaapi -profile:v high -b:v {bitrate} -maxrate {maxrate} -bufsize {bufsize} -g 50 -bf 0 -sei:v 0",
+        "scale": "-sws_flags fast_bilinear -vf hwdownload,format=nv12,scale={w}:{h}:force_original_aspect_ratio=decrease:force_divisible_by=2,format=nv12,hwupload",
+        "encode": "-c:v h264_vaapi -b:v {bitrate} -maxrate {maxrate} -bufsize {bufsize} -g 50 -bf 0",
     },
     "preset-intel-qsv-h264": {
         "decode": "-hwaccel qsv -qsv_device {gpu} -hwaccel_output_format qsv",
@@ -94,7 +94,7 @@ HWACCEL_TEMPLATES = {
 HWACCEL_TEMPLATES["default"] = {
     "decode": "",
     "scale": "-vf scale={w}:{h}:force_original_aspect_ratio=decrease:force_divisible_by=2",
-    "encode": "-c:v libx264 -preset:v fast -profile:v high -level:v 4.1 -b:v {bitrate} -maxrate {maxrate} -bufsize {bufsize} -g 50",
+    "encode": "-c:v libx264 -preset:v ultrafast -profile:v high -level:v 4.1 -b:v {bitrate} -maxrate {maxrate} -bufsize {bufsize} -g 50",
 }
 
 
@@ -251,7 +251,7 @@ class ABRTranscoder:
             "bufsize": f"{kbps * 2}k",
         }
 
-        parts = [self.ffmpeg_path, "-hide_banner", "-loglevel", "warning", "-y"]
+        parts = [self.ffmpeg_path, "-hide_banner", "-loglevel", "warning", "-threads", "4", "-y"]
 
         # Seek to clip start (before input for fast seek)
         if clip_from_ms is not None and clip_from_ms > 0:
