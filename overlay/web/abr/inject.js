@@ -16,9 +16,13 @@
   var ABR_CONFIG_URL = "/abr/config";
   var STORAGE_KEY_LIVE = "frigate-abr-live-quality";
   var STORAGE_KEY_RECORDING = "frigate-abr-recording-quality";
+  var ABR_VARIANT_PREFIX = "_abr_";
 
   var abrConfig = null;
   var abrEnabled = false;
+
+  // Track active live WebSockets so we can close them on quality change
+  var activeLiveWebSockets = [];
 
   // --- Initialization ---
 
@@ -94,21 +98,38 @@
 
   function interceptWebSocket() {
     window.WebSocket = function (url, protocols) {
+      var isLive = false;
       try {
         var quality = getLiveQuality();
         if (quality !== "original" && quality !== "auto" && isLiveWsUrl(url)) {
           var newUrl = rewriteLiveWsUrl(url, quality);
           console.log("[ABR] Rewriting live WS:", url, "->", newUrl);
           url = newUrl;
+          isLive = true;
+        } else if (isLiveWsUrl(url)) {
+          isLive = true;
         }
       } catch (e) {
         console.warn("[ABR] WebSocket intercept error:", e);
       }
 
+      var ws;
       if (protocols !== undefined) {
-        return new OriginalWebSocket(url, protocols);
+        ws = new OriginalWebSocket(url, protocols);
+      } else {
+        ws = new OriginalWebSocket(url);
       }
-      return new OriginalWebSocket(url);
+
+      // Track live WebSockets for quality-change reconnection
+      if (isLive) {
+        activeLiveWebSockets.push(ws);
+        ws.addEventListener("close", function () {
+          var idx = activeLiveWebSockets.indexOf(ws);
+          if (idx !== -1) activeLiveWebSockets.splice(idx, 1);
+        });
+      }
+
+      return ws;
     };
 
     // Preserve prototype chain and static properties
@@ -123,8 +144,6 @@
     return url && (/\/live\/mse\/api\/ws\?/.test(url) || /\/live\/webrtc\/api\/ws\?/.test(url));
   }
 
-  var ABR_VARIANT_PREFIX = "_abr_";
-
   function rewriteLiveWsUrl(url, quality) {
     // Change src=camera_name to src=camera_name_abr_720p
     var tierSuffix = ABR_VARIANT_PREFIX + quality;
@@ -136,6 +155,24 @@
       }
       return prefix + camera + tierSuffix;
     });
+  }
+
+  function closeAllLiveWebSockets() {
+    // Close all tracked live WebSockets. The players will auto-reconnect,
+    // and the new WebSocket creation goes through our interceptor with the
+    // updated quality from localStorage.
+    var sockets = activeLiveWebSockets.slice(); // copy to avoid mutation during iteration
+    console.log("[ABR] Closing", sockets.length, "live WebSocket(s) for quality switch");
+    for (var i = 0; i < sockets.length; i++) {
+      try {
+        if (sockets[i].readyState === OriginalWebSocket.OPEN ||
+            sockets[i].readyState === OriginalWebSocket.CONNECTING) {
+          sockets[i].close();
+        }
+      } catch (e) {
+        // ignore
+      }
+    }
   }
 
   // --- Quality Persistence ---
@@ -287,16 +324,12 @@
           e.stopPropagation();
           if (isLive) {
             setLiveQuality(opt.value);
-            window.dispatchEvent(new CustomEvent("abr-quality-change", {
-              detail: { type: "live", quality: opt.value }
-            }));
-            // Force the live player to reconnect by simulating visibility change
-            forcePlayerReconnect();
+            // Close active live WebSockets. Players auto-reconnect and
+            // the new connection goes through our interceptor with the
+            // updated quality setting.
+            closeAllLiveWebSockets();
           } else {
             setRecordingQuality(opt.value);
-            window.dispatchEvent(new CustomEvent("abr-quality-change", {
-              detail: { type: "recording", quality: opt.value }
-            }));
             // For recordings, reload to pick up the new quality via intercepted loadSource
             window.location.reload();
           }
@@ -336,18 +369,6 @@
     // Recording views are at /review or /history
     if (path.indexOf("/review") === 0 || path.indexOf("/history") === 0) return false;
     return false;
-  }
-
-  function forcePlayerReconnect() {
-    // Dispatch a brief visibility toggle to force WebSocket reconnection.
-    // MSEPlayer and WebRTCPlayer disconnect on visibility loss.
-    var origHidden = document.hidden;
-    Object.defineProperty(document, "hidden", { value: true, writable: true, configurable: true });
-    document.dispatchEvent(new Event("visibilitychange"));
-    setTimeout(function () {
-      Object.defineProperty(document, "hidden", { value: origHidden, writable: true, configurable: true });
-      document.dispatchEvent(new Event("visibilitychange"));
-    }, 100);
   }
 
   // --- Boot ---
