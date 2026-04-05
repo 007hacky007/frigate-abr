@@ -311,14 +311,22 @@ async def _fetch_frigate_vod(
     """
     # Use int timestamps to avoid .0 suffix in URL
     url = f"{FRIGATE_API}/vod/{camera_name}/start/{int(start_ts)}/end/{int(end_ts)}"
+    # Frigate's API requires auth headers even on the internal port.
+    # nginx normally sets these via auth subrequest. We pass admin
+    # credentials since this is a same-container internal call.
+    headers = {"remote-user": "admin", "remote-role": "admin"}
     try:
-        resp = await http_client.get(url)
+        resp = await http_client.get(url, headers=headers)
         if resp.status_code == 404:
+            logger.warning("Frigate VOD returned 404 for %s: %s", url, resp.text[:200])
+            return None
+        if resp.status_code >= 400:
+            logger.error("Frigate VOD returned %d for %s: %s", resp.status_code, url, resp.text[:200])
             return None
         resp.raise_for_status()
         return resp.json()
     except httpx.HTTPError:
-        logger.exception("Failed to fetch Frigate VOD for %s", camera_name)
+        logger.exception("Failed to fetch Frigate VOD for %s at %s", camera_name, url)
         return None
 
 
