@@ -39,19 +39,19 @@ HWACCEL_TEMPLATES = {
         "encode": "-c:v h264_nvenc -preset:v p4 -profile:v high -b:v {bitrate} -maxrate {maxrate} -bufsize {bufsize} -g 50",
     },
     "preset-vaapi": {
-        "decode": "-hwaccel vaapi -hwaccel_device {gpu} -hwaccel_output_format vaapi -extra_hw_frames 16",
-        "scale": "-sws_flags fast_bilinear -vf hwdownload,format=nv12,scale={w}:{h}:force_original_aspect_ratio=decrease:force_divisible_by=2,format=nv12,hwupload",
-        "encode": "-c:v h264_vaapi -b:v {bitrate} -maxrate {maxrate} -bufsize {bufsize} -g 50 -bf 0",
+        "decode": "-hwaccel vaapi -hwaccel_device {gpu}",
+        "scale": "-vf scale={w}:{h}:force_original_aspect_ratio=decrease:force_divisible_by=2",
+        "encode": "-c:v libx264 -preset:v superfast -tune:v zerolatency -b:v {bitrate} -maxrate {maxrate} -bufsize {bufsize} -g 50",
     },
     "preset-intel-qsv-h264": {
-        "decode": "-hwaccel qsv -qsv_device {gpu} -hwaccel_output_format qsv",
-        "scale": "-vf vpp_qsv=w={w}:h={h}",
-        "encode": "-c:v h264_qsv -profile:v high -b:v {bitrate} -maxrate {maxrate} -bufsize {bufsize} -g 50 -async_depth:v 1",
+        "decode": "-hwaccel qsv -qsv_device {gpu}",
+        "scale": "-vf scale={w}:{h}:force_original_aspect_ratio=decrease:force_divisible_by=2",
+        "encode": "-c:v libx264 -preset:v superfast -tune:v zerolatency -b:v {bitrate} -maxrate {maxrate} -bufsize {bufsize} -g 50",
     },
     "preset-intel-qsv-h265": {
-        "decode": "-hwaccel qsv -qsv_device {gpu} -hwaccel_output_format qsv",
-        "scale": "-vf vpp_qsv=w={w}:h={h}",
-        "encode": "-c:v h264_qsv -profile:v high -b:v {bitrate} -maxrate {maxrate} -bufsize {bufsize} -g 50 -async_depth:v 1",
+        "decode": "-hwaccel qsv -qsv_device {gpu}",
+        "scale": "-vf scale={w}:{h}:force_original_aspect_ratio=decrease:force_divisible_by=2",
+        "encode": "-c:v libx264 -preset:v superfast -tune:v zerolatency -b:v {bitrate} -maxrate {maxrate} -bufsize {bufsize} -g 50",
     },
     "preset-rkmpp": {
         "decode": "-hwaccel rkmpp -hwaccel_output_format drm_prime",
@@ -94,7 +94,7 @@ HWACCEL_TEMPLATES = {
 HWACCEL_TEMPLATES["default"] = {
     "decode": "",
     "scale": "-vf scale={w}:{h}:force_original_aspect_ratio=decrease:force_divisible_by=2",
-    "encode": "-c:v libx264 -preset:v ultrafast -profile:v high -level:v 4.1 -b:v {bitrate} -maxrate {maxrate} -bufsize {bufsize} -g 50",
+    "encode": "-c:v libx264 -preset:v superfast -tune:v zerolatency -b:v {bitrate} -maxrate {maxrate} -bufsize {bufsize} -g 50",
 }
 
 

@@ -155,10 +155,11 @@ class TestBuildCmd:
 
     def test_vaapi_preset(self):
         t = ABRTranscoder("/usr/bin/ffmpeg", "preset-vaapi", "/dev/dri/renderD128", "/tmp/cache")
-        cmd = t._build_cmd("/in.mp4", "/out.mp4", self.tier)
+        cmd = t._build_cmd("/in.mp4", "/out.ts", self.tier)
         cmd_str = " ".join(cmd)
-        assert "h264_vaapi" in cmd_str
-        assert "vaapi" in cmd_str
+        assert "hwaccel vaapi" in cmd_str
+        assert "libx264" in cmd_str
+        assert "superfast" in cmd_str
 
     def test_unknown_preset_falls_back_to_default(self):
         t = ABRTranscoder("/usr/bin/ffmpeg", "nonexistent-preset", 0, "/tmp/cache")
