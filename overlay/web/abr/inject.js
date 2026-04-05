@@ -35,7 +35,7 @@
 
         console.log("[ABR] Enabled with tiers:", cfg.tiers.map(function (t) { return t.name; }));
 
-        interceptFetch();
+        interceptVodRequests();
         interceptWebSocket();
         observePlayerMounts();
       })
@@ -52,14 +52,27 @@
     });
   }
 
-  // --- Recording ABR: Intercept fetch for VOD URLs ---
+  // --- Recording ABR: Intercept XHR and fetch for VOD URLs ---
 
-  function interceptFetch() {
-    // hls.js is loaded as an ES module (not global), so we can't patch
-    // Hls.prototype.loadSource. Instead, intercept fetch() which hls.js
-    // uses internally to load playlists and segments.
-    // We only rewrite the master.m3u8 request - hls.js then follows the
-    // ABR master playlist's variant URLs automatically.
+  function interceptVodRequests() {
+    // hls.js uses XMLHttpRequest (not fetch) to load playlists and segments.
+    // We intercept XHR.open() to rewrite master.m3u8 URLs to the ABR sidecar.
+    // Also intercept fetch() as a fallback (some hls.js configs use fetch loader).
+    var origXhrOpen = XMLHttpRequest.prototype.open;
+    XMLHttpRequest.prototype.open = function (method, url) {
+      try {
+        var quality = getRecordingQuality();
+        if (quality !== "original" && typeof url === "string" && isVodMasterUrl(url)) {
+          var abrUrl = rewriteVodUrl(url);
+          console.log("[ABR] Rewriting VOD XHR:", url, "->", abrUrl);
+          arguments[1] = abrUrl;
+        }
+      } catch (e) {
+        console.warn("[ABR] XHR intercept error:", e);
+      }
+      return origXhrOpen.apply(this, arguments);
+    };
+
     var origFetch = window.fetch;
     window.fetch = function (input, init) {
       try {
@@ -79,7 +92,8 @@
       }
       return origFetch.call(window, input, init);
     };
-    console.log("[ABR] fetch intercepted for VOD URL rewriting");
+
+    console.log("[ABR] XHR and fetch intercepted for VOD URL rewriting");
   }
 
   function isVodMasterUrl(url) {
