@@ -3,7 +3,7 @@ FROM ghcr.io/blakeblackshear/frigate:${FRIGATE_VERSION}
 
 # Install Python dependencies at build time
 COPY sidecar/requirements.txt /opt/frigate-abr/sidecar/requirements.txt
-RUN pip3 install --no-cache-dir -r /opt/frigate-abr/sidecar/requirements.txt
+RUN pip3 install --break-system-packages --no-cache-dir -r /opt/frigate-abr/sidecar/requirements.txt
 
 # Sidecar application code
 COPY sidecar/ /opt/frigate-abr/sidecar/

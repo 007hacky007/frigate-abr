@@ -9,7 +9,7 @@ echo "[ABR] Starting ABR sidecar service..."
 # Install Python dependencies if not already available
 if ! python3 -c "import fastapi" 2>/dev/null; then
     echo "[ABR] Installing Python dependencies..."
-    pip3 install --quiet --no-cache-dir -r /opt/frigate-abr/sidecar/requirements.txt
+    pip3 install --break-system-packages --quiet --no-cache-dir -r /opt/frigate-abr/sidecar/requirements.txt
 fi
 
 # Logs to stdout for s6 collection
