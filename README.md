@@ -32,7 +32,7 @@ Just replace your Frigate image with the frigate-abr image. Everything is baked 
 ```yaml
 services:
   frigate:
-    image: ghcr.io/youruser/frigate-abr:latest   # was: ghcr.io/blakeblackshear/frigate:stable
+    image: ghcr.io/007hacky007/frigate-abr:latest   # was: ghcr.io/blakeblackshear/frigate:stable
     # everything else stays exactly the same
 ```
 
@@ -60,7 +60,7 @@ Available tags:
 To build locally instead of pulling:
 
 ```bash
-git clone https://github.com/youruser/frigate-abr.git
+git clone https://github.com/007hacky007/frigate-abr.git
 cd frigate-abr
 docker build -t frigate-abr .
 
@@ -78,7 +78,7 @@ If you prefer not to use a custom image, you can inject the overlay into the sto
 
 ```bash
 cd /path/to/your/frigate-setup   # where your docker-compose.yml lives
-git clone https://github.com/youruser/frigate-abr.git
+git clone https://github.com/007hacky007/frigate-abr.git
 ```
 
 **2. Add volumes to your Frigate service**
