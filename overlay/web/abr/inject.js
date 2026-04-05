@@ -351,17 +351,15 @@
           if (isLive) {
             console.log("[ABR] Quality switch: " + getLiveQuality() + " -> " + opt.value);
             setLiveQuality(opt.value);
-            console.log("[ABR] localStorage now:", localStorage.getItem(STORAGE_KEY_LIVE));
-            console.log("[ABR] Active live WebSockets before close:", activeLiveWebSockets.length);
-            for (var dbg = 0; dbg < activeLiveWebSockets.length; dbg++) {
-              console.log("[ABR]   WS[" + dbg + "] readyState=" + activeLiveWebSockets[dbg].readyState + " url=" + activeLiveWebSockets[dbg].url);
-            }
-            closeAllLiveWebSockets();
           } else {
+            console.log("[ABR] Recording quality switch: " + getRecordingQuality() + " -> " + opt.value);
             setRecordingQuality(opt.value);
-            // For recordings, reload to pick up the new quality via intercepted loadSource
-            window.location.reload();
           }
+          // Reload the page to apply the new quality. The setting is persisted
+          // in localStorage so the new page load picks it up immediately.
+          // We can't seamlessly switch mid-stream because Frigate's players
+          // don't auto-reconnect when sockets are closed externally.
+          window.location.reload();
           // Update active state
           var siblings = menu.querySelectorAll(".abr-quality-option");
           for (var s = 0; s < siblings.length; s++) {
