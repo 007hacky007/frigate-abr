@@ -125,9 +125,14 @@
       // Track live WebSockets for quality-change reconnection
       if (isLive) {
         activeLiveWebSockets.push(ws);
-        ws.addEventListener("close", function () {
+        console.log("[ABR] Tracking live WS (" + activeLiveWebSockets.length + " total):", url);
+        ws.addEventListener("close", function (ev) {
           var idx = activeLiveWebSockets.indexOf(ws);
           if (idx !== -1) activeLiveWebSockets.splice(idx, 1);
+          console.log("[ABR] Live WS closed (code=" + ev.code + ", reason=" + ev.reason + ", remaining=" + activeLiveWebSockets.length + "):", url);
+        });
+        ws.addEventListener("error", function () {
+          console.log("[ABR] Live WS error:", url);
         });
       }
 
@@ -158,6 +163,19 @@
       return prefix + camera + tierSuffix;
     });
   }
+
+  // Expose debug helper on window for console troubleshooting
+  window._abrDebug = function () {
+    console.log("[ABR] === Debug Info ===");
+    console.log("[ABR] Enabled:", abrEnabled);
+    console.log("[ABR] Config:", JSON.stringify(abrConfig));
+    console.log("[ABR] Live quality:", getLiveQuality());
+    console.log("[ABR] Recording quality:", getRecordingQuality());
+    console.log("[ABR] Active live WebSockets:", activeLiveWebSockets.length);
+    for (var i = 0; i < activeLiveWebSockets.length; i++) {
+      console.log("[ABR]   WS[" + i + "] readyState=" + activeLiveWebSockets[i].readyState + " url=" + activeLiveWebSockets[i].url);
+    }
+  };
 
   function closeAllLiveWebSockets() {
     // Close all tracked live WebSockets. The players will auto-reconnect,
@@ -331,10 +349,13 @@
         item.addEventListener("click", function (e) {
           e.stopPropagation();
           if (isLive) {
+            console.log("[ABR] Quality switch: " + getLiveQuality() + " -> " + opt.value);
             setLiveQuality(opt.value);
-            // Close active live WebSockets. Players auto-reconnect and
-            // the new connection goes through our interceptor with the
-            // updated quality setting.
+            console.log("[ABR] localStorage now:", localStorage.getItem(STORAGE_KEY_LIVE));
+            console.log("[ABR] Active live WebSockets before close:", activeLiveWebSockets.length);
+            for (var dbg = 0; dbg < activeLiveWebSockets.length; dbg++) {
+              console.log("[ABR]   WS[" + dbg + "] readyState=" + activeLiveWebSockets[dbg].readyState + " url=" + activeLiveWebSockets[dbg].url);
+            }
             closeAllLiveWebSockets();
           } else {
             setRecordingQuality(opt.value);
