@@ -245,9 +245,18 @@ The overlay does not modify any Frigate source files. On Frigate update:
 |---------|-----|
 | No gear icon on video players | Check `docker compose logs frigate \| grep ABR` for patch errors. Verify the `sub_filter` line was added to nginx.conf. |
 | Gear icon visible but quality switch has no effect | Check `curl localhost:5000/abr/stats` - the sidecar may not have started. Check logs for Python errors. |
+| Grey/black screen on ABR quality (live view) | **Firefox autoplay restriction.** Click the lock icon in the address bar -> Permissions -> Autoplay -> Allow Audio and Video. This is required because ABR transcodes H265 to H264 which enables MSE playback - and Firefox blocks MSE autoplay by default. Chrome is more permissive and usually works without this step. |
 | Transcoding is slow or failing | Verify `hwaccel` in `config.yml` matches your GPU. Run `docker compose logs frigate \| grep ffmpeg` for errors. |
 | pip install fails at startup | The container needs internet access on first boot to install Python dependencies (`fastapi`, `uvicorn`, `httpx`, `pyyaml`). They are cached after the first run. |
 | Cache growing too large | Lower `cache.max_size_gb` or `cache.ttl_hours` in `config.yml`. |
+
+### Firefox autoplay
+
+Firefox blocks autoplay for video elements by default. With ABR enabled, the camera stream is transcoded from H265 to H264, which allows the MSE player to handle it (MSE can't decode H265). However, MSE requires autoplay permission that Firefox doesn't grant automatically.
+
+**To fix:** navigate to your Frigate URL, click the lock/info icon in the address bar, go to Permissions, and set Autoplay to "Allow Audio and Video". This is a one-time setting per browser profile.
+
+Chrome and Safari are typically not affected because they allow muted autoplay by default.
 
 ## License
 
