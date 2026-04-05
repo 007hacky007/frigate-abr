@@ -198,6 +198,80 @@ async def get_stats():
     }
 
 
+@app.get("/abr/debug/transcode")
+async def debug_transcode(camera: str = "vchod", quality: str = "480p"):
+    """Debug endpoint: tries to transcode one segment and returns diagnostics."""
+    import time as _time
+
+    diag = {
+        "ffmpeg_path": transcoder.ffmpeg_path if transcoder else None,
+        "ffmpeg_exists": os.path.exists(transcoder.ffmpeg_path) if transcoder else False,
+        "hwaccel_preset": transcoder.hwaccel_preset if transcoder else None,
+        "gpu": transcoder.gpu if transcoder else None,
+        "cache_dir": str(transcoder.cache_dir) if transcoder else None,
+    }
+
+    if not transcoder:
+        diag["error"] = "Transcoder not initialized"
+        return diag
+
+    tier = _find_tier(quality)
+    if not tier:
+        diag["error"] = f"Unknown tier: {quality}"
+        return diag
+
+    # Get one recording segment from Frigate
+    now = int(_time.time())
+    vod_data = await _fetch_frigate_vod(camera, now - 3600, now)
+
+    if not vod_data:
+        diag["error"] = "Could not fetch VOD data from Frigate"
+        return diag
+
+    clips = vod_data.get("sequences", [{}])[0].get("clips", [])
+    if not clips:
+        diag["error"] = "No clips in VOD response"
+        return diag
+
+    clip = clips[0]
+    recording_path = clip.get("path")
+    clip_from_ms = clip.get("clipFrom")
+    duration_ms = vod_data["durations"][0] if vod_data.get("durations") else None
+
+    diag["recording_path"] = recording_path
+    diag["recording_exists"] = os.path.exists(recording_path) if recording_path else False
+    diag["clip_from_ms"] = clip_from_ms
+    diag["duration_ms"] = duration_ms
+
+    # Build the ffmpeg command without running it
+    cache_path = transcoder.cache_path_for(recording_path, tier, clip_from_ms, duration_ms)
+    tmp_path = str(cache_path) + ".debug"
+    cmd = transcoder._build_cmd(recording_path, tmp_path, tier, clip_from_ms, duration_ms)
+    diag["ffmpeg_cmd"] = " ".join(cmd)
+
+    # Try running ffmpeg
+    try:
+        proc = await asyncio.create_subprocess_exec(
+            *cmd,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=30)
+        diag["ffmpeg_exit_code"] = proc.returncode
+        diag["ffmpeg_stderr"] = stderr.decode(errors="replace")[-1000:]
+        if proc.returncode == 0 and os.path.exists(tmp_path):
+            diag["output_size_bytes"] = os.path.getsize(tmp_path)
+            os.unlink(tmp_path)
+        elif os.path.exists(tmp_path):
+            os.unlink(tmp_path)
+    except asyncio.TimeoutError:
+        diag["error"] = "ffmpeg timed out after 30s"
+    except Exception as e:
+        diag["error"] = str(e)
+
+    return diag
+
+
 @app.get("/abr/vod_abr/{camera_name}/start/{start_ts}/end/{end_ts}")
 async def vod_abr_mapped(
     camera_name: str, start_ts: float, end_ts: float, quality: str = "original"
