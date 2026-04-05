@@ -39,19 +39,19 @@ HWACCEL_TEMPLATES = {
         "encode": "-c:v h264_nvenc -preset:v p4 -profile:v high -b:v {bitrate} -maxrate {maxrate} -bufsize {bufsize} -g 50",
     },
     "preset-vaapi": {
-        "decode": "-hwaccel vaapi -hwaccel_device {gpu}",
-        "scale": "-vf scale={w}:{h}:force_original_aspect_ratio=decrease:force_divisible_by=2",
-        "encode": "-c:v libx264 -preset:v superfast -tune:v zerolatency -b:v {bitrate} -maxrate {maxrate} -bufsize {bufsize} -g 50",
+        "decode": "-hwaccel vaapi -hwaccel_device {gpu} -hwaccel_output_format vaapi -extra_hw_frames 32",
+        "scale": "-vf scale_vaapi=w={w}:h={h}:force_original_aspect_ratio=decrease:force_divisible_by=2",
+        "encode": "-c:v h264_vaapi -b:v {bitrate} -maxrate {maxrate} -bufsize {bufsize} -g 50 -bf 0",
     },
     "preset-intel-qsv-h264": {
-        "decode": "-hwaccel qsv -qsv_device {gpu}",
-        "scale": "-vf scale={w}:{h}:force_original_aspect_ratio=decrease:force_divisible_by=2",
-        "encode": "-c:v libx264 -preset:v superfast -tune:v zerolatency -b:v {bitrate} -maxrate {maxrate} -bufsize {bufsize} -g 50",
+        "decode": "-hwaccel qsv -qsv_device {gpu} -hwaccel_output_format qsv -extra_hw_frames 32",
+        "scale": "-vf vpp_qsv=w={w}:h={h}",
+        "encode": "-c:v h264_qsv -b:v {bitrate} -maxrate {maxrate} -bufsize {bufsize} -g 50 -async_depth:v 1",
     },
     "preset-intel-qsv-h265": {
-        "decode": "-hwaccel qsv -qsv_device {gpu}",
-        "scale": "-vf scale={w}:{h}:force_original_aspect_ratio=decrease:force_divisible_by=2",
-        "encode": "-c:v libx264 -preset:v superfast -tune:v zerolatency -b:v {bitrate} -maxrate {maxrate} -bufsize {bufsize} -g 50",
+        "decode": "-hwaccel qsv -qsv_device {gpu} -hwaccel_output_format qsv -extra_hw_frames 32",
+        "scale": "-vf vpp_qsv=w={w}:h={h}",
+        "encode": "-c:v h264_qsv -b:v {bitrate} -maxrate {maxrate} -bufsize {bufsize} -g 50 -async_depth:v 1",
     },
     "preset-rkmpp": {
         "decode": "-hwaccel rkmpp -hwaccel_output_format drm_prime",
@@ -290,27 +290,11 @@ class ABRTranscoder:
 
         return parts
 
-    async def _transcode(
-        self,
-        input_path: str,
-        output_path: str,
-        tier: QualityTier,
-        clip_from_ms: int | None = None,
-        duration_ms: int | None = None,
-    ) -> bool:
-        """Run ffmpeg to transcode a recording segment."""
+    async def _run_ffmpeg(self, cmd: list[str], output_path: str) -> bool:
+        """Run an ffmpeg command. Returns True on success."""
         tmp_path = output_path + ".tmp"
-        cmd = self._build_cmd(input_path, tmp_path, tier, clip_from_ms, duration_ms)
-
-        logger.info(
-            "Transcoding %s -> %s (%s, clip_from=%s, duration=%s)",
-            input_path,
-            tier.name,
-            tier.bitrate,
-            clip_from_ms,
-            duration_ms,
-        )
-        logger.debug("ffmpeg cmd: %s", " ".join(cmd))
+        # Replace output path in cmd with tmp_path
+        cmd = [tmp_path if x == output_path else x for x in cmd]
 
         try:
             proc = await asyncio.create_subprocess_exec(
@@ -323,27 +307,58 @@ class ABRTranscoder:
                     proc.communicate(), timeout=TRANSCODE_TIMEOUT_SECONDS
                 )
             except asyncio.TimeoutError:
-                logger.error("Transcoding timed out for %s", input_path)
+                logger.error("Transcoding timed out")
                 proc.kill()
                 await proc.wait()
                 Path(tmp_path).unlink(missing_ok=True)
                 return False
 
             if proc.returncode != 0:
-                logger.error(
-                    "Transcoding failed (exit %d) for %s: %s",
+                logger.warning(
+                    "ffmpeg exit %d: %s",
                     proc.returncode,
-                    input_path,
-                    stderr.decode(errors="replace")[-500:],
+                    stderr.decode(errors="replace")[-300:],
                 )
                 Path(tmp_path).unlink(missing_ok=True)
                 return False
 
             shutil.move(tmp_path, output_path)
-            logger.info("Transcoded: %s -> %s", input_path, output_path)
             return True
 
         except Exception:
-            logger.exception("Transcoding exception for %s", input_path)
+            logger.exception("ffmpeg exception")
             Path(tmp_path).unlink(missing_ok=True)
             return False
+
+    async def _transcode(
+        self,
+        input_path: str,
+        output_path: str,
+        tier: QualityTier,
+        clip_from_ms: int | None = None,
+        duration_ms: int | None = None,
+    ) -> bool:
+        """Run ffmpeg to transcode a recording segment.
+
+        Tries the configured hwaccel preset first. If it fails (e.g. VAAPI
+        memory allocation error), automatically retries with CPU-only encoding.
+        """
+        logger.info(
+            "Transcoding %s -> %s (%s, clip_from=%s, duration=%s)",
+            input_path,
+            tier.name,
+            tier.bitrate,
+            clip_from_ms,
+            duration_ms,
+        )
+
+        cmd = self._build_cmd(input_path, output_path, tier, clip_from_ms, duration_ms)
+        logger.debug("ffmpeg cmd: %s", " ".join(cmd))
+        success = await self._run_ffmpeg(cmd, output_path)
+
+        if success:
+            logger.info("Transcoded: %s -> %s", input_path, output_path)
+        else:
+            logger.error("Transcoding failed for %s", input_path)
+
+        return success
