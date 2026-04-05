@@ -2,10 +2,10 @@ name: Build and Push Docker Image
 
 on:
   push:
-    branches: [main]
+    branches: [master]
     tags: ["v*"]
   pull_request:
-    branches: [main]
+    branches: [master]
   workflow_dispatch:
     inputs:
       frigate_version:
@@ -56,9 +56,9 @@ jobs:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
           tags: |
             # Branch builds: frigate version tag
-            type=raw,value=frigate-${{ env.FRIGATE_VERSION }},enable=${{ github.ref == 'refs/heads/main' }}
+            type=raw,value=frigate-${{ env.FRIGATE_VERSION }},enable=${{ github.ref == 'refs/heads/master' }}
             # Latest on main
-            type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' }}
+            type=raw,value=latest,enable=${{ github.ref == 'refs/heads/master' }}
             # Git tags: v1.0.0 -> 1.0.0
             type=semver,pattern={{version}}
             # PR builds
@@ -78,7 +78,7 @@ jobs:
 
   check-frigate-release:
     runs-on: ubuntu-latest
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    if: github.event_name == 'push' && github.ref == 'refs/heads/master'
     permissions:
       contents: read
       issues: write
