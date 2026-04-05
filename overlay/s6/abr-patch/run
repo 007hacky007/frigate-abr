@@ -2,8 +2,10 @@
 # shellcheck shell=bash
 # Patch nginx.conf to add ABR sidecar routing before nginx starts.
 # This is a oneshot service that runs after frigate but before nginx.
-
-set -o errexit -o nounset -o pipefail
+#
+# IMPORTANT: This script must ALWAYS exit 0. If patching fails, ABR won't
+# work but Frigate must still start normally. Never let a patch failure
+# prevent nginx from starting.
 
 NGINX_CONF="/usr/local/nginx/conf/nginx.conf"
 
@@ -16,8 +18,8 @@ if grep -q "abr_sidecar" "$NGINX_CONF" 2>/dev/null; then
 fi
 
 if [ ! -f "$NGINX_CONF" ]; then
-    echo "[ABR] ERROR: nginx.conf not found at $NGINX_CONF"
-    exit 1
+    echo "[ABR] WARNING: nginx.conf not found at $NGINX_CONF - skipping patch."
+    exit 0
 fi
 
 # 1. Add upstream block for ABR sidecar (after go2rtc_upstream.conf include)
@@ -27,21 +29,22 @@ if grep -q "include go2rtc_upstream.conf;" "$NGINX_CONF"; then
     upstream abr_sidecar {\
         server 127.0.0.1:8090;\
         keepalive 8;\
-    }' "$NGINX_CONF"
-    echo "[ABR] Added upstream abr_sidecar block."
+    }' "$NGINX_CONF" && echo "[ABR] Added upstream abr_sidecar block." \
+        || echo "[ABR] WARNING: Failed to add upstream block."
 else
-    echo "[ABR] WARNING: Could not find go2rtc_upstream.conf include. Adding upstream before frigate_api."
-    sed -i '/upstream frigate_api/i\
-    upstream abr_sidecar {\
-        server 127.0.0.1:8090;\
-        keepalive 8;\
-    }\
-' "$NGINX_CONF"
+    echo "[ABR] WARNING: Could not find go2rtc_upstream.conf include."
 fi
 
-# 2. Add location blocks for ABR (after include base_path.conf)
+# 2. Add location blocks for ABR API and static files (after include base_path.conf)
 if grep -q "include base_path.conf;" "$NGINX_CONF"; then
     sed -i '/include base_path.conf;/a\
+\
+        # ABR sidecar - static files (JS/CSS overlay)\
+        location /abr/static/ {\
+            alias /opt/frigate/web/abr/;\
+            add_header Cache-Control "no-store";\
+            expires off;\
+        }\
 \
         # ABR sidecar - API endpoints\
         location /abr/ {\
@@ -57,8 +60,8 @@ if grep -q "include base_path.conf;" "$NGINX_CONF"; then
         location /abr_cache/ {\
             internal;\
             alias /tmp/cache/abr/;\
-        }' "$NGINX_CONF"
-    echo "[ABR] Added /abr/ and /abr_cache/ location blocks."
+        }' "$NGINX_CONF" && echo "[ABR] Added /abr/ location blocks." \
+        || echo "[ABR] WARNING: Failed to add location blocks."
 else
     echo "[ABR] WARNING: Could not find base_path.conf include for location injection."
 fi
@@ -66,18 +69,19 @@ fi
 # 3. Inject frontend overlay script via nginx sub_filter directive.
 # Frigate's nginx.conf uses sub_filter to rewrite HTML responses. We add our
 # own sub_filter alongside the existing ones inside the 'location /' block.
-# The target anchor is the existing sub_filter for <body> injection (line ~347):
+# The target anchor is the existing sub_filter for <body> injection:
 #   sub_filter '<body>' '<body><script>window.baseUrl=...
 # We insert our sub_filter right before that line.
 if ! grep -q "abr/static/inject.js" "$NGINX_CONF"; then
     if grep -q "sub_filter '<body>'" "$NGINX_CONF"; then
         sed -i "/sub_filter '<body>'/i\\
-            sub_filter '</head>' '<script src=\"/abr/static/inject.js\"></script><link rel=\"stylesheet\" href=\"/abr/static/inject.css\"/></head>';" "$NGINX_CONF"
-        echo "[ABR] Added sub_filter for frontend overlay injection."
+            sub_filter '</head>' '<script src=\"/abr/static/inject.js\"></script><link rel=\"stylesheet\" href=\"/abr/static/inject.css\"/></head>';" "$NGINX_CONF" \
+            && echo "[ABR] Added sub_filter for frontend overlay injection." \
+            || echo "[ABR] WARNING: Failed to add sub_filter for script injection."
     else
         echo "[ABR] WARNING: Could not find sub_filter '<body>' anchor for script injection."
-        echo "[ABR] Frontend overlay will not be loaded automatically."
     fi
 fi
 
-echo "[ABR] nginx.conf patched successfully."
+echo "[ABR] nginx.conf patch complete."
+exit 0
