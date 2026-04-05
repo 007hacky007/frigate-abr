@@ -73,6 +73,8 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           build-args: |
             FRIGATE_VERSION=${{ env.FRIGATE_VERSION }}
+            ABR_COMMIT=${{ github.sha }}
+            ABR_VERSION=${{ github.ref_name }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 

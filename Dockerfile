@@ -1,6 +1,12 @@
 ARG FRIGATE_VERSION=0.17.1
 FROM ghcr.io/blakeblackshear/frigate:${FRIGATE_VERSION}
 
+# Build metadata - set by CI or docker build
+ARG ABR_VERSION=dev
+ARG ABR_COMMIT=unknown
+ENV ABR_VERSION=${ABR_VERSION}
+ENV ABR_COMMIT=${ABR_COMMIT}
+
 # Install Python dependencies at build time
 COPY sidecar/requirements.txt /opt/frigate-abr/sidecar/requirements.txt
 RUN pip3 install --break-system-packages --no-cache-dir -r /opt/frigate-abr/sidecar/requirements.txt

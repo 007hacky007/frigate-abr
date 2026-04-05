@@ -160,8 +160,12 @@ if overlay_web_dir.exists():
 
 @app.get("/abr/health")
 async def health():
-    """Health check endpoint."""
-    return {"status": "ok"}
+    """Health check endpoint with version info."""
+    return {
+        "status": "ok",
+        "version": os.environ.get("ABR_VERSION", "dev"),
+        "commit": os.environ.get("ABR_COMMIT", "unknown"),
+    }
 
 
 @app.get("/abr/config")
