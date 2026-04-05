@@ -8,9 +8,11 @@ from pathlib import Path
 
 import httpx
 import yaml
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Path as PathParam
 from fastapi.responses import PlainTextResponse
 from fastapi.staticfiles import StaticFiles
+
+CAMERA_NAME_RE = r"^[a-zA-Z0-9_-]+$"
 
 from .cache import ABRCacheManager
 from .go2rtc_client import setup_live_variants
@@ -166,7 +168,7 @@ async def lifespan(app: FastAPI):
 
     # Register live stream variants in go2rtc
     try:
-        await setup_live_variants(tiers, GO2RTC_API)
+        await setup_live_variants(http_client, tiers, GO2RTC_API)
     except Exception:
         logger.exception("Failed to setup live ABR variants (go2rtc may not be ready)")
 
@@ -303,15 +305,12 @@ async def debug_transcode(camera: str = "vchod", quality: str = "480p"):
 
 @app.get("/abr/hls/{camera_name}/start/{start_ts}/end/{end_ts}/playlist.m3u8")
 async def vod_abr_playlist(
-    camera_name: str, start_ts: float, end_ts: float, quality: str = "480p"
+    camera_name: str = PathParam(..., pattern=CAMERA_NAME_RE),
+    start_ts: float = 0,
+    end_ts: float = 0,
+    quality: str = "480p",
 ):
-    """Generate an HLS VOD playlist for a specific quality tier.
-
-    Bypasses nginx-vod-module entirely. Fetches segment info from Frigate's
-    VOD API and generates a proper m3u8 playlist where each segment points to
-    our on-demand transcoding endpoint. Segments are transcoded one at a time
-    as hls.js requests them.
-    """
+    """Generate an HLS VOD playlist for a specific quality tier."""
     if not transcoder or not tiers:
         raise HTTPException(503, "ABR not initialized")
 
@@ -358,7 +357,11 @@ async def vod_abr_playlist(
 
 @app.get("/abr/hls/{camera_name}/start/{start_ts}/end/{end_ts}/segment/{index}.ts")
 async def vod_abr_segment(
-    camera_name: str, start_ts: float, end_ts: float, index: int, quality: str = "480p"
+    camera_name: str = PathParam(..., pattern=CAMERA_NAME_RE),
+    start_ts: float = 0,
+    end_ts: float = 0,
+    index: int = 0,
+    quality: str = "480p",
 ):
     """Transcode and serve a single recording segment as MPEG-TS.
 
@@ -413,7 +416,7 @@ async def live_setup():
     if not tiers:
         raise HTTPException(503, "ABR not initialized")
 
-    results = await setup_live_variants(tiers, GO2RTC_API)
+    results = await setup_live_variants(http_client, tiers, GO2RTC_API)
     return {"cameras": results}
 
 
@@ -422,16 +425,6 @@ def _find_tier(quality: str) -> QualityTier | None:
         if t.name == quality:
             return t
     return None
-
-
-def _tier_bandwidth(tier: QualityTier) -> int:
-    """Convert tier bitrate to bits/sec for HLS BANDWIDTH tag."""
-    b = tier.bitrate.strip().lower()
-    if b.endswith("k"):
-        return int(float(b[:-1]) * 1000)
-    if b.endswith("m"):
-        return int(float(b[:-1]) * 1000000)
-    return int(b)
 
 
 async def _fetch_frigate_vod(
@@ -467,21 +460,13 @@ async def _fetch_frigate_vod(
         data = resp.json()
         # Cache the result
         _vod_cache[cache_key] = (now, data)
-        # Evict old entries
-        for k in list(_vod_cache):
-            if now - _vod_cache[k][0] > _VOD_CACHE_TTL:
-                del _vod_cache[k]
+        # Evict old entries (copy keys first to avoid RuntimeError during iteration)
+        to_delete = [k for k in _vod_cache if now - _vod_cache[k][0] > _VOD_CACHE_TTL]
+        for k in to_delete:
+            _vod_cache.pop(k, None)
         return data
     except httpx.HTTPError:
         logger.exception("Failed to fetch Frigate VOD for %s at %s", camera_name, url)
         return None
 
 
-async def _proxy_frigate_vod(
-    camera_name: str, start_ts: float, end_ts: float
-):
-    """Proxy VOD request directly to Frigate."""
-    data = await _fetch_frigate_vod(camera_name, start_ts, end_ts)
-    if not data:
-        raise HTTPException(404, "No recordings found")
-    return data

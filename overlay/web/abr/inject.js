@@ -38,6 +38,14 @@
         interceptVodRequests();
         interceptWebSocket();
         observePlayerMounts();
+
+        // Single global handler to close all quality menus on outside click
+        document.addEventListener("click", function () {
+          var menus = document.querySelectorAll(".abr-quality-menu");
+          for (var m = 0; m < menus.length; m++) {
+            menus[m].style.display = "none";
+          }
+        });
       })
       .catch(function () {
         // Sidecar not running - silently disable
@@ -397,11 +405,6 @@
     btn.addEventListener("click", function (e) {
       e.stopPropagation();
       menu.style.display = menu.style.display === "none" ? "block" : "none";
-    });
-
-    // Close menu when clicking outside
-    document.addEventListener("click", function () {
-      menu.style.display = "none";
     });
 
     wrapper.appendChild(btn);

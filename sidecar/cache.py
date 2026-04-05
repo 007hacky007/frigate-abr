@@ -61,7 +61,7 @@ class ABRCacheManager:
         now = time.time()
         evicted = 0
         for f in self.cache_dir.iterdir():
-            if not f.is_file() or f.suffix != ".mp4":
+            if not f.is_file() or f.suffix not in (".mp4", ".ts"):
                 continue
             try:
                 # Use mtime (touched on access by transcoder)
@@ -79,7 +79,7 @@ class ABRCacheManager:
         files = []
         total_size = 0
         for f in self.cache_dir.iterdir():
-            if not f.is_file() or f.suffix != ".mp4":
+            if not f.is_file() or f.suffix not in (".mp4", ".ts"):
                 continue
             try:
                 st = f.stat()
