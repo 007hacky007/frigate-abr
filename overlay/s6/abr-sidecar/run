@@ -1,0 +1,18 @@
+#!/command/with-contenv bash
+# shellcheck shell=bash
+# Start the ABR sidecar transcoding service
+
+set -o errexit -o nounset -o pipefail
+
+echo "[ABR] Starting ABR sidecar service..."
+
+# Install Python dependencies if not already available
+if ! python3 -c "import fastapi" 2>/dev/null; then
+    echo "[ABR] Installing Python dependencies..."
+    pip3 install --quiet --no-cache-dir -r /opt/frigate-abr/sidecar/requirements.txt
+fi
+
+# Logs to stdout for s6 collection
+cd /opt/frigate-abr
+exec 2>&1
+exec python3 -m uvicorn sidecar.app:app --host 127.0.0.1 --port 8090 --log-level info

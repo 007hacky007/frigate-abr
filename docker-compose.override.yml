@@ -1,0 +1,43 @@
+# Frigate ABR Overlay - Docker Compose Override
+#
+# Place this file alongside your Frigate docker-compose.yml, or merge
+# the volumes into your existing Frigate service definition.
+#
+# Usage:
+#   docker compose -f docker-compose.yml -f docker-compose.override.yml up -d
+#
+# Alternatively, rename to docker-compose.override.yml and Docker Compose
+# will automatically merge it with docker-compose.yml.
+
+services:
+  frigate:
+    volumes:
+      # ABR sidecar application code
+      - ./frigate-abr/sidecar:/opt/frigate-abr/sidecar:ro
+      - ./frigate-abr/sidecar/requirements.txt:/opt/frigate-abr/sidecar/requirements.txt:ro
+
+      # ABR configuration
+      - ./frigate-abr/config.yml:/opt/frigate-abr/config.yml:ro
+
+      # S6 service: abr-patch (oneshot - patches nginx.conf before nginx starts)
+      - ./frigate-abr/overlay/s6/abr-patch:/etc/s6-overlay/s6-rc.d/abr-patch:ro
+
+      # S6 service: abr-sidecar (longrun - the transcoding service)
+      - ./frigate-abr/overlay/s6/abr-sidecar:/etc/s6-overlay/s6-rc.d/abr-sidecar:ro
+
+      # Register services in the s6 user pipeline
+      - ./frigate-abr/overlay/s6/user-contents/abr-patch-pipeline:/etc/s6-overlay/s6-rc.d/user/contents.d/abr-patch-pipeline:ro
+      - ./frigate-abr/overlay/s6/user-contents/abr-sidecar-pipeline:/etc/s6-overlay/s6-rc.d/user/contents.d/abr-sidecar-pipeline:ro
+
+      # Add abr-patch as a dependency of nginx (so nginx waits for the patch)
+      - ./frigate-abr/overlay/s6/nginx-deps/abr-patch:/etc/s6-overlay/s6-rc.d/nginx/dependencies.d/abr-patch:ro
+
+      # Frontend overlay files (quality selector JS/CSS)
+      - ./frigate-abr/overlay/web/abr:/opt/frigate/web/abr:ro
+
+      # Transcoding cache volume
+      - abr_cache:/tmp/cache/abr
+
+volumes:
+  abr_cache:
+    driver: local

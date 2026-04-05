@@ -1,0 +1,83 @@
+#!/command/with-contenv bash
+# shellcheck shell=bash
+# Patch nginx.conf to add ABR sidecar routing before nginx starts.
+# This is a oneshot service that runs after frigate but before nginx.
+
+set -o errexit -o nounset -o pipefail
+
+NGINX_CONF="/usr/local/nginx/conf/nginx.conf"
+
+echo "[ABR] Checking nginx.conf for ABR patch..."
+
+# Idempotent: skip if already patched
+if grep -q "abr_sidecar" "$NGINX_CONF" 2>/dev/null; then
+    echo "[ABR] nginx.conf already patched, skipping."
+    exit 0
+fi
+
+if [ ! -f "$NGINX_CONF" ]; then
+    echo "[ABR] ERROR: nginx.conf not found at $NGINX_CONF"
+    exit 1
+fi
+
+# 1. Add upstream block for ABR sidecar (after go2rtc_upstream.conf include)
+if grep -q "include go2rtc_upstream.conf;" "$NGINX_CONF"; then
+    sed -i '/include go2rtc_upstream.conf;/a\
+\
+    upstream abr_sidecar {\
+        server 127.0.0.1:8090;\
+        keepalive 8;\
+    }' "$NGINX_CONF"
+    echo "[ABR] Added upstream abr_sidecar block."
+else
+    echo "[ABR] WARNING: Could not find go2rtc_upstream.conf include. Adding upstream before frigate_api."
+    sed -i '/upstream frigate_api/i\
+    upstream abr_sidecar {\
+        server 127.0.0.1:8090;\
+        keepalive 8;\
+    }\
+' "$NGINX_CONF"
+fi
+
+# 2. Add location blocks for ABR (after include base_path.conf)
+if grep -q "include base_path.conf;" "$NGINX_CONF"; then
+    sed -i '/include base_path.conf;/a\
+\
+        # ABR sidecar - API endpoints\
+        location /abr/ {\
+            proxy_pass http://abr_sidecar/abr/;\
+            proxy_http_version 1.1;\
+            proxy_set_header Host $host;\
+            proxy_set_header X-Real-IP $remote_addr;\
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;\
+            proxy_read_timeout 300s;\
+        }\
+\
+        # ABR cache - serve transcoded segments for nginx-vod-module\
+        location /abr_cache/ {\
+            internal;\
+            alias /tmp/cache/abr/;\
+        }' "$NGINX_CONF"
+    echo "[ABR] Added /abr/ and /abr_cache/ location blocks."
+else
+    echo "[ABR] WARNING: Could not find base_path.conf include for location injection."
+fi
+
+# 3. Inject frontend overlay script via nginx sub_filter directive.
+# Frigate's nginx.conf uses sub_filter to rewrite HTML responses. We add our
+# own sub_filter alongside the existing ones inside the 'location /' block.
+# The target anchor is the existing sub_filter for <body> injection (line ~347):
+#   sub_filter '<body>' '<body><script>window.baseUrl=...
+# We insert our sub_filter right before that line.
+if ! grep -q "abr/static/inject.js" "$NGINX_CONF"; then
+    if grep -q "sub_filter '<body>'" "$NGINX_CONF"; then
+        sed -i "/sub_filter '<body>'/i\\
+            sub_filter '</head>' '<script src=\"/abr/static/inject.js\"></script><link rel=\"stylesheet\" href=\"/abr/static/inject.css\"/></head>';" "$NGINX_CONF"
+        echo "[ABR] Added sub_filter for frontend overlay injection."
+    else
+        echo "[ABR] WARNING: Could not find sub_filter '<body>' anchor for script injection."
+        echo "[ABR] Frontend overlay will not be loaded automatically."
+    fi
+fi
+
+echo "[ABR] nginx.conf patched successfully."

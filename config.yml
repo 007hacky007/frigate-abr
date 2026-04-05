@@ -1,0 +1,28 @@
+enabled: true
+
+tiers:
+  - name: "1080p"
+    width: 1920
+    height: 1080
+    bitrate: "4000k"
+  - name: "720p"
+    width: 1280
+    height: 720
+    bitrate: "2000k"
+  - name: "480p"
+    width: 854
+    height: 480
+    bitrate: "800k"
+
+cache:
+  path: /tmp/cache/abr
+  max_size_gb: 10.0
+  ttl_hours: 24
+
+max_concurrent_transcodes: 2
+
+# Auto-detected from Frigate config by default.
+# Uncomment and set to override:
+# hwaccel: preset-nvidia
+# ffmpeg_path: /usr/lib/ffmpeg/7.1/bin/ffmpeg
+# gpu: 0

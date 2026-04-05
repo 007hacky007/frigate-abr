@@ -1,0 +1,116 @@
+name: Build and Push Docker Image
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      frigate_version:
+        description: "Frigate version to build against"
+        required: false
+        default: "0.17.1"
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+  FRIGATE_VERSION: "0.17.1"
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set Frigate version from dispatch input
+        if: github.event_name == 'workflow_dispatch'
+        env:
+          INPUT_VERSION: ${{ inputs.frigate_version }}
+        run: |
+          if [ -n "$INPUT_VERSION" ]; then
+            echo "FRIGATE_VERSION=$INPUT_VERSION" >> "$GITHUB_ENV"
+          fi
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GitHub Container Registry
+        if: github.event_name != 'pull_request'
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            # Branch builds: frigate version tag
+            type=raw,value=frigate-${{ env.FRIGATE_VERSION }},enable=${{ github.ref == 'refs/heads/main' }}
+            # Latest on main
+            type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' }}
+            # Git tags: v1.0.0 -> 1.0.0
+            type=semver,pattern={{version}}
+            # PR builds
+            type=ref,event=pr
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: ${{ github.event_name != 'pull_request' }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            FRIGATE_VERSION=${{ env.FRIGATE_VERSION }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  check-frigate-release:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    permissions:
+      contents: read
+      issues: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Check for new Frigate release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CURRENT_VERSION: "0.17.1"
+        run: |
+          LATEST=$(gh api repos/blakeblackshear/frigate/releases/latest --jq .tag_name | sed 's/^v//')
+
+          echo "Current pinned: $CURRENT_VERSION"
+          echo "Latest Frigate: $LATEST"
+
+          if [ "$LATEST" != "$CURRENT_VERSION" ]; then
+            echo "::warning::New Frigate release available: $LATEST (currently pinned to $CURRENT_VERSION)"
+
+            EXISTING=$(gh issue list --search "Update Frigate base to $LATEST" --json number --jq length)
+            if [ "$EXISTING" = "0" ]; then
+              gh issue create \
+                --title "Update Frigate base to $LATEST" \
+                --body "A new Frigate stable release **$LATEST** is available. Current pinned version is **$CURRENT_VERSION**.
+
+          To update:
+          1. Change FRIGATE_VERSION in Dockerfile and .github/workflows/build.yml
+          2. Test the build
+          3. Push to main
+
+          Or trigger a manual build: Actions -> Build and Push -> Run workflow -> set version to $LATEST"
+            fi
+          fi

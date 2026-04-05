@@ -1,0 +1,64 @@
+/* Frigate ABR Quality Selector - Dark theme matching Frigate UI */
+
+.abr-quality-selector {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  z-index: 60;
+}
+
+.abr-quality-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border: none;
+  border-radius: 6px;
+  background: rgba(0, 0, 0, 0.6);
+  color: #ffffff;
+  cursor: pointer;
+  backdrop-filter: blur(4px);
+  transition: background 0.15s ease;
+}
+
+.abr-quality-btn:hover {
+  background: rgba(0, 0, 0, 0.8);
+}
+
+.abr-quality-menu {
+  position: absolute;
+  top: 36px;
+  right: 0;
+  min-width: 100px;
+  background: rgba(24, 24, 27, 0.95);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  padding: 4px 0;
+  backdrop-filter: blur(8px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+}
+
+.abr-quality-option {
+  padding: 6px 14px;
+  color: #d4d4d8;
+  font-size: 13px;
+  font-family: inherit;
+  cursor: pointer;
+  transition: background 0.1s ease, color 0.1s ease;
+  white-space: nowrap;
+}
+
+.abr-quality-option:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: #ffffff;
+}
+
+.abr-quality-option.active {
+  color: #3b82f6;
+  font-weight: 600;
+}
+
+.abr-quality-option.active::before {
+  content: "\2022 ";
+}
