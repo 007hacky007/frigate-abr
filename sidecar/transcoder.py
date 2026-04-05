@@ -39,9 +39,9 @@ HWACCEL_TEMPLATES = {
         "encode": "-c:v h264_nvenc -preset:v p4 -profile:v high -b:v {bitrate} -maxrate {maxrate} -bufsize {bufsize} -g 50",
     },
     "preset-vaapi": {
-        "decode": "-hwaccel vaapi -hwaccel_device {gpu} -hwaccel_output_format vaapi -extra_hw_frames 32",
-        "scale": "-vf scale_vaapi=w={w}:h={h}:force_original_aspect_ratio=decrease:force_divisible_by=2",
-        "encode": "-c:v h264_vaapi -b:v {bitrate} -maxrate {maxrate} -bufsize {bufsize} -g 50 -bf 0",
+        "decode": "-hwaccel qsv -qsv_device {gpu} -hwaccel_output_format qsv -extra_hw_frames 32",
+        "scale": "-vf vpp_qsv=w={w}:h={h}",
+        "encode": "-c:v h264_qsv -b:v {bitrate} -maxrate {maxrate} -bufsize {bufsize} -g 50 -async_depth:v 1",
     },
     "preset-intel-qsv-h264": {
         "decode": "-hwaccel qsv -qsv_device {gpu} -hwaccel_output_format qsv -extra_hw_frames 32",
