@@ -300,8 +300,13 @@ def _tier_bandwidth(tier: QualityTier) -> int:
 async def _fetch_frigate_vod(
     camera_name: str, start_ts: float, end_ts: float
 ) -> dict | None:
-    """Fetch VOD manifest data from Frigate's API."""
-    url = f"{FRIGATE_API}/api/vod/{camera_name}/start/{start_ts}/end/{end_ts}"
+    """Fetch VOD manifest data from Frigate's internal API (port 5001).
+
+    Note: Frigate's internal API does NOT use the /api/ prefix.
+    The /api/ prefix is only used by nginx's external routing.
+    """
+    # Use int timestamps to avoid .0 suffix in URL
+    url = f"{FRIGATE_API}/vod/{camera_name}/start/{int(start_ts)}/end/{int(end_ts)}"
     try:
         resp = await http_client.get(url)
         if resp.status_code == 404:
