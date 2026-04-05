@@ -129,7 +129,15 @@ async def lifespan(app: FastAPI):
 
     ffmpeg_path = detect_ffmpeg_path(config)
     hwaccel = detect_hwaccel(config)
-    gpu = config.get("gpu", detect_gpu_device(hwaccel))
+    gpu_cfg = config.get("gpu")
+    # For VAAPI/QSV/RKMPP, the GPU must be a device path (e.g. /dev/dri/renderD128).
+    # An integer like 0 is only valid for NVIDIA. Auto-detect if not a valid path.
+    if gpu_cfg is not None and isinstance(gpu_cfg, str) and gpu_cfg.startswith("/"):
+        gpu = gpu_cfg
+    elif "nvidia" in hwaccel:
+        gpu = str(gpu_cfg if gpu_cfg is not None else 0)
+    else:
+        gpu = detect_gpu_device(hwaccel)
     cache_cfg = config.get("cache", {})
     cache_dir = cache_cfg.get("path", "/tmp/cache/abr")
 
