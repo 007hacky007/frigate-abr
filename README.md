@@ -162,6 +162,26 @@ curl http://localhost:5000/abr/debug/transcode?camera=YOUR_CAMERA&quality=480p
 
 The overlay does not modify any Frigate source files. On Frigate update, the nginx patch re-applies automatically (idempotent). If Frigate changes `nginx.conf` structure significantly, the sed patterns in `abr-patch/run` may need updating - the patch logs clearly when it fails.
 
+## FAQ
+
+### Why not use nginx-vod-module for recording ABR?
+
+We tried this first. Frigate already uses nginx-vod-module for HLS playback, so it seemed natural to route ABR requests through it with a different upstream. Two problems killed the approach:
+
+1. **`vod_upstream_location` can't be overridden at location level.** We added a `/vod_abr/` location with `vod_upstream_location /abr;` pointing to our sidecar, but nginx-vod-module ignored it and kept using the server-level `vod_upstream_location /api` (Frigate's original API). Both `/vod_abr/` and `/vod/` returned identical 3840x2160 HEVC content.
+
+2. **nginx-vod-module needs the entire manifest upfront.** It makes a single subrequest to get a JSON manifest with ALL clip paths, then generates the HLS playlist from that. Our sidecar had to transcode ALL 300+ segments before returning the manifest. A 1-hour recording would take 30+ minutes to transcode upfront, and the subrequest would time out long before that.
+
+The solution: bypass nginx-vod-module entirely for ABR. The sidecar generates its own m3u8 playlist and serves MPEG-TS segments on-demand. hls.js requests them one at a time, each transcodes in ~1-2 seconds with QSV, and they're cached after first play.
+
+### Why does the VAAPI preset use QSV internally?
+
+VAAPI's `scale_vaapi` filter fails with "Cannot allocate memory" when Frigate is simultaneously using the GPU for object detection. The GPU runs out of surface memory for a second decode+scale+encode pipeline. QSV (Intel Quick Sync) uses a different memory management model (libmfx/oneVPL) and doesn't have this contention issue, even on the same Intel GPU. So the `preset-vaapi` template maps to QSV decode + vpp_qsv scale + h264_qsv encode for VOD transcoding. Live transcoding is handled by go2rtc separately.
+
+### Why does quality switching reload the page?
+
+Frigate's MSEPlayer and WebRTCPlayer don't auto-reconnect when WebSockets are closed externally. Their internal state machines have conditions that prevent reconnection. We tried faking visibility changes and closing sockets directly, but the players either ignored it or entered long error-recovery loops. A page reload is the only reliable way to switch quality, and since the setting is stored in localStorage, the new page load picks it up immediately.
+
 ## License
 
 MIT

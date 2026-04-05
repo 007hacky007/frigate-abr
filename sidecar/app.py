@@ -7,9 +7,10 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 
 import httpx
+import re
 import yaml
 from fastapi import FastAPI, HTTPException, Path as PathParam
-from fastapi.responses import PlainTextResponse
+from fastapi.responses import FileResponse, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
 
 CAMERA_NAME_RE = r"^[a-zA-Z0-9_-]+$"
@@ -231,6 +232,8 @@ async def get_stats():
 
 @app.get("/abr/debug/transcode")
 async def debug_transcode(camera: str = "vchod", quality: str = "480p"):
+    if not re.match(CAMERA_NAME_RE, camera):
+        raise HTTPException(400, "Invalid camera name")
     """Debug endpoint: tries to transcode one segment and returns diagnostics."""
     import time as _time
 
@@ -401,8 +404,6 @@ async def vod_abr_segment(
     if not transcoded_path:
         raise HTTPException(500, "Transcoding failed")
 
-    # Serve the transcoded file
-    from fastapi.responses import FileResponse
     return FileResponse(
         transcoded_path,
         media_type="video/mp2t",

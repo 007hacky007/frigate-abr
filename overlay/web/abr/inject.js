@@ -207,30 +207,6 @@
     }
   };
 
-  function closeAllLiveWebSockets() {
-    // Close all tracked live WebSockets. The players will auto-reconnect,
-    // and the new WebSocket creation goes through our interceptor with the
-    // updated quality from localStorage.
-    //
-    // Note: MSEPlayer has a RECONNECT_TIMEOUT of 10s and goes through a
-    // fallback chain (MSE -> WebRTC -> JSMpeg) on errors. Closing with
-    // code 1000 (normal) triggers the reconnect. The player may take a few
-    // seconds to settle on the new stream. This is inherent to Frigate's
-    // player design and cannot be avoided without modifying Frigate source.
-    var sockets = activeLiveWebSockets.slice(); // copy to avoid mutation during iteration
-    console.log("[ABR] Closing", sockets.length, "live WebSocket(s) for quality switch");
-    for (var i = 0; i < sockets.length; i++) {
-      try {
-        if (sockets[i].readyState === OriginalWebSocket.OPEN ||
-            sockets[i].readyState === OriginalWebSocket.CONNECTING) {
-          sockets[i].close(1000, "ABR quality change");
-        }
-      } catch (e) {
-        // ignore
-      }
-    }
-  }
-
   // --- Quality Persistence ---
 
   function getLiveQuality() {
