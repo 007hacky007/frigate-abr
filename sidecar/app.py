@@ -56,15 +56,30 @@ def detect_ffmpeg_path(config: dict) -> str:
                 with open(path) as f:
                     frigate_cfg = yaml.safe_load(f)
                 ffpath = frigate_cfg.get("ffmpeg", {}).get("path", "default")
-                if ffpath == "default":
-                    return "/usr/lib/ffmpeg/7.1/bin/ffmpeg"
-                # If it contains a slash, it's already an absolute path
-                if "/" in ffpath:
-                    return ffpath
-                return f"/usr/lib/ffmpeg/{ffpath}/bin/ffmpeg"
+                if ffpath != "default":
+                    if "/" in ffpath:
+                        return ffpath
+                    return f"/usr/lib/ffmpeg/{ffpath}/bin/ffmpeg"
             except Exception:
                 pass
-    return "/usr/lib/ffmpeg/7.1/bin/ffmpeg"
+    # Auto-detect: find the first available ffmpeg binary
+    for version in ["7.0", "7.1", "6.1", "6.0"]:
+        candidate = f"/usr/lib/ffmpeg/{version}/bin/ffmpeg"
+        if os.path.exists(candidate):
+            return candidate
+    # Last resort
+    return "/usr/bin/ffmpeg"
+
+
+def detect_gpu_device(hwaccel: str) -> str:
+    """Auto-detect the GPU device path/index based on hwaccel preset."""
+    if "nvidia" in hwaccel:
+        return "0"
+    # VAAPI/QSV/RKMPP use device paths
+    for device in ["/dev/dri/renderD128", "/dev/dri/renderD129"]:
+        if os.path.exists(device):
+            return device
+    return "/dev/dri/renderD128"
 
 
 def detect_hwaccel(config: dict) -> str:
@@ -114,7 +129,7 @@ async def lifespan(app: FastAPI):
 
     ffmpeg_path = detect_ffmpeg_path(config)
     hwaccel = detect_hwaccel(config)
-    gpu = config.get("gpu", 0)
+    gpu = config.get("gpu", detect_gpu_device(hwaccel))
     cache_cfg = config.get("cache", {})
     cache_dir = cache_cfg.get("path", "/tmp/cache/abr")
 
