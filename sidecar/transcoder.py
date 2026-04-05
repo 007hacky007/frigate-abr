@@ -40,7 +40,7 @@ HWACCEL_TEMPLATES = {
     },
     "preset-vaapi": {
         "decode": "-hwaccel vaapi -hwaccel_device {gpu} -hwaccel_output_format vaapi -extra_hw_frames 16",
-        "scale": "-vf scale_vaapi=w={w}:h={h}:force_original_aspect_ratio=decrease:force_divisible_by=2",
+        "scale": "-vf hwdownload,format=nv12,scale={w}:{h}:force_original_aspect_ratio=decrease:force_divisible_by=2,format=nv12,hwupload",
         "encode": "-c:v h264_vaapi -profile:v high -b:v {bitrate} -maxrate {maxrate} -bufsize {bufsize} -g 50 -bf 0 -sei:v 0",
     },
     "preset-intel-qsv-h264": {
