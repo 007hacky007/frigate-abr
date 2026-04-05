@@ -70,7 +70,7 @@
     XMLHttpRequest.prototype.open = function (method, url) {
       try {
         var quality = getRecordingQuality();
-        if (quality !== "original" && typeof url === "string" && isVodUrl(url)) {
+        if (quality !== "original" && quality !== "auto" && typeof url === "string" && isVodUrl(url)) {
           var abrUrl = rewriteVodUrl(url);
           console.log("[ABR] Rewriting VOD XHR:", url, "->", abrUrl);
           arguments[1] = abrUrl;
@@ -86,7 +86,7 @@
       try {
         var url = typeof input === "string" ? input : (input && input.url ? input.url : "");
         var quality = getRecordingQuality();
-        if (quality !== "original" && isVodUrl(url)) {
+        if (quality !== "original" && quality !== "auto" && isVodUrl(url)) {
           var abrUrl = rewriteVodUrl(url);
           console.log("[ABR] Rewriting VOD fetch:", url, "->", abrUrl);
           if (typeof input === "string") {
@@ -223,9 +223,9 @@
 
   function getRecordingQuality() {
     try {
-      return localStorage.getItem(STORAGE_KEY_RECORDING) || "auto";
+      return localStorage.getItem(STORAGE_KEY_RECORDING) || "original";
     } catch (e) {
-      return "auto";
+      return "original";
     }
   }
 
@@ -334,12 +334,7 @@
 
     // Build options
     var options = [];
-    if (isLive) {
-      options.push({ label: "Original", value: "original" });
-    } else {
-      options.push({ label: "Auto", value: "auto" });
-      options.push({ label: "Original", value: "original" });
-    }
+    options.push({ label: "Original", value: "original" });
     for (var i = 0; i < abrConfig.tiers.length; i++) {
       var t = abrConfig.tiers[i];
       options.push({ label: t.name, value: t.name });
