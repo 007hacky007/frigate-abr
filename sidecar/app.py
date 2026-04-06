@@ -347,6 +347,9 @@ async def vod_abr_playlist(
         if i >= len(durations):
             break
         duration_s = durations[i] / 1000.0
+        # Each segment is transcoded independently with timestamps starting at 0,
+        # so we must signal a discontinuity between every segment.
+        lines.append("#EXT-X-DISCONTINUITY")
         lines.append(f"#EXTINF:{duration_s:.3f},")
         lines.append(f"{base_url}/segment/{i}.ts?quality={quality}")
 
