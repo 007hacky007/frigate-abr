@@ -9,14 +9,14 @@ on:
   workflow_dispatch:
     inputs:
       frigate_version:
-        description: "Frigate version to build against"
+        description: "Frigate base version (e.g. 0.17.1)"
         required: false
         default: "0.17.1"
 
 env:
   REGISTRY: ghcr.io
   IMAGE_NAME: ${{ github.repository }}
-  FRIGATE_VERSION: "0.17.1"
+  FRIGATE_BASE_VERSION: "0.17.1"
 
 jobs:
   build:
@@ -25,18 +25,33 @@ jobs:
       contents: read
       packages: write
 
+    strategy:
+      matrix:
+        variant:
+          - suffix: ""
+            tag_suffix: ""
+          - suffix: "-tensorrt"
+            tag_suffix: "-tensorrt"
+          - suffix: "-rk"
+            tag_suffix: "-rk"
+          - suffix: "-rocm"
+            tag_suffix: "-rocm"
+          - suffix: "-tensorrt-jp6"
+            tag_suffix: "-tensorrt-jp6"
+          - suffix: "-synaptics"
+            tag_suffix: "-synaptics"
+
     steps:
       - name: Checkout
         uses: actions/checkout@v5
 
-      - name: Set Frigate version from dispatch input
-        if: github.event_name == 'workflow_dispatch'
+      - name: Set Frigate version
         env:
           INPUT_VERSION: ${{ inputs.frigate_version }}
         run: |
-          if [ -n "$INPUT_VERSION" ]; then
-            echo "FRIGATE_VERSION=$INPUT_VERSION" >> "$GITHUB_ENV"
-          fi
+          BASE="${INPUT_VERSION:-$FRIGATE_BASE_VERSION}"
+          echo "FRIGATE_VERSION=${BASE}${{ matrix.variant.suffix }}" >> "$GITHUB_ENV"
+          echo "TAG_SUFFIX=${{ matrix.variant.tag_suffix }}" >> "$GITHUB_ENV"
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v4
@@ -55,14 +70,9 @@ jobs:
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
           tags: |
-            # Branch builds: frigate version tag
+            type=raw,value=latest${{ env.TAG_SUFFIX }},enable=${{ github.ref == 'refs/heads/master' }}
             type=raw,value=frigate-${{ env.FRIGATE_VERSION }},enable=${{ github.ref == 'refs/heads/master' }}
-            # Latest on main
-            type=raw,value=latest,enable=${{ github.ref == 'refs/heads/master' }}
-            # Git tags: v1.0.0 -> 1.0.0
-            type=semver,pattern={{version}}
-            # PR builds
-            type=ref,event=pr
+            type=ref,event=pr,suffix=${{ env.TAG_SUFFIX }}
 
       - name: Build and push
         uses: docker/build-push-action@v7
@@ -75,8 +85,9 @@ jobs:
             FRIGATE_VERSION=${{ env.FRIGATE_VERSION }}
             ABR_COMMIT=${{ github.sha }}
             ABR_VERSION=${{ github.ref_name }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          cache-from: type=gha,scope=${{ env.FRIGATE_VERSION }}
+          cache-to: type=gha,mode=max,scope=${{ env.FRIGATE_VERSION }}
+          platforms: linux/amd64
 
   check-frigate-release:
     runs-on: ubuntu-latest
@@ -109,9 +120,9 @@ jobs:
                 --body "A new Frigate stable release **$LATEST** is available. Current pinned version is **$CURRENT_VERSION**.
 
           To update:
-          1. Change FRIGATE_VERSION in Dockerfile and .github/workflows/build.yml
+          1. Change FRIGATE_BASE_VERSION in .github/workflows/build.yml
           2. Test the build
-          3. Push to main
+          3. Push to master
 
           Or trigger a manual build: Actions -> Build and Push -> Run workflow -> set version to $LATEST"
             fi

@@ -5,7 +5,7 @@ Adaptive bitrate streaming overlay for [Frigate NVR](https://github.com/blakebla
 ## What it does
 
 - **Live streams**: Registers lower-resolution stream variants in go2rtc (e.g. `camera_abr_720p`). go2rtc only transcodes when a viewer connects, so idle variants cost nothing.
-- **Recordings**: Transcodes recording segments on-demand via Intel QSV/VAAPI, caches the results, and serves them as HLS. Each 10-second segment transcodes in ~1-2 seconds.
+- **Recordings**: Transcodes recording segments on-demand with GPU acceleration, caches the results, and serves them as HLS. Each 10-second segment transcodes in ~1-2 seconds on Intel iGPU.
 - **Quality selector**: A gear icon injected into every video player lets you pick quality. Switching reloads the page with the new setting.
 
 ## Quality tiers
@@ -48,19 +48,35 @@ docker compose up -d
 
 That's it. The image is based on Frigate `0.17.1` with the ABR overlay pre-installed.
 
-Available tags:
-- `latest` - latest build from master branch
-- `frigate-0.17.1` - pinned to specific Frigate version
+### Available tags
 
-To build locally:
+Images are built for all Frigate variants:
+
+| Tag | Base image | Use case |
+|-----|-----------|----------|
+| `latest` | `frigate:0.17.1` | Standard x86_64 (Intel/AMD) |
+| `latest-tensorrt` | `frigate:0.17.1-tensorrt` | NVIDIA GPU with TensorRT |
+| `latest-rk` | `frigate:0.17.1-rk` | Rockchip SoCs |
+| `latest-rocm` | `frigate:0.17.1-rocm` | AMD GPU with ROCm |
+| `latest-tensorrt-jp6` | `frigate:0.17.1-tensorrt-jp6` | NVIDIA Jetson (JetPack 6) |
+| `latest-synaptics` | `frigate:0.17.1-synaptics` | Synaptics accelerator |
+
+Pinned version tags are also available (e.g. `frigate-0.17.1-tensorrt`).
+
+To build locally for a specific variant:
 
 ```bash
 git clone https://github.com/007hacky007/frigate-abr.git
 cd frigate-abr
+
+# Standard
 docker build -t frigate-abr .
 
-# Pin to a different Frigate version:
-docker build --build-arg FRIGATE_VERSION=0.17.1 -t frigate-abr .
+# NVIDIA TensorRT
+docker build --build-arg FRIGATE_VERSION=0.17.1-tensorrt -t frigate-abr:tensorrt .
+
+# Rockchip
+docker build --build-arg FRIGATE_VERSION=0.17.1-rk -t frigate-abr:rk .
 ```
 
 ## Hardware acceleration
@@ -166,11 +182,11 @@ The overlay does not modify any Frigate source files. On Frigate update, the ngi
 
 ### Why not use nginx-vod-module for recording ABR?
 
-We tried this first. Frigate already uses nginx-vod-module for HLS playback, so it seemed natural to route ABR requests through it with a different upstream. Two problems killed the approach:
+I tried this first. Frigate already uses nginx-vod-module for HLS playback, so it seemed natural to route ABR requests through it with a different upstream. Two problems killed the approach:
 
-1. **`vod_upstream_location` can't be overridden at location level.** We added a `/vod_abr/` location with `vod_upstream_location /abr;` pointing to our sidecar, but nginx-vod-module ignored it and kept using the server-level `vod_upstream_location /api` (Frigate's original API). Both `/vod_abr/` and `/vod/` returned identical 3840x2160 HEVC content.
+1. **`vod_upstream_location` can't be overridden at location level.** I added a `/vod_abr/` location with `vod_upstream_location /abr;` pointing to the sidecar, but nginx-vod-module ignored it and kept using the server-level `vod_upstream_location /api` (Frigate's original API). Both `/vod_abr/` and `/vod/` returned identical 3840x2160 HEVC content.
 
-2. **nginx-vod-module needs the entire manifest upfront.** It makes a single subrequest to get a JSON manifest with ALL clip paths, then generates the HLS playlist from that. Our sidecar had to transcode ALL 300+ segments before returning the manifest. A 1-hour recording would take 30+ minutes to transcode upfront, and the subrequest would time out long before that.
+2. **nginx-vod-module needs the entire manifest upfront.** It makes a single subrequest to get a JSON manifest with ALL clip paths, then generates the HLS playlist from that. The sidecar had to transcode ALL 300+ segments before returning the manifest. A 1-hour recording would take 30+ minutes to transcode upfront, and the subrequest would time out long before that.
 
 The solution: bypass nginx-vod-module entirely for ABR. The sidecar generates its own m3u8 playlist and serves MPEG-TS segments on-demand. hls.js requests them one at a time, each transcodes in ~1-2 seconds with QSV, and they're cached after first play.
 
@@ -180,7 +196,7 @@ VAAPI's `scale_vaapi` filter fails with "Cannot allocate memory" when Frigate is
 
 ### Why does quality switching reload the page?
 
-Frigate's MSEPlayer and WebRTCPlayer don't auto-reconnect when WebSockets are closed externally. Their internal state machines have conditions that prevent reconnection. We tried faking visibility changes and closing sockets directly, but the players either ignored it or entered long error-recovery loops. A page reload is the only reliable way to switch quality, and since the setting is stored in localStorage, the new page load picks it up immediately.
+Frigate's MSEPlayer and WebRTCPlayer don't auto-reconnect when WebSockets are closed externally. Their internal state machines have conditions that prevent reconnection. I tried faking visibility changes and closing sockets directly, but the players either ignored it or entered long error-recovery loops. A page reload is the only reliable way to switch quality, and since the setting is stored in localStorage, the new page load picks it up immediately.
 
 ## License
 
