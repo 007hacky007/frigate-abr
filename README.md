@@ -56,10 +56,7 @@ Images are built for all Frigate variants:
 |-----|-----------|----------|
 | `latest` | `frigate:0.17.1` | Standard x86_64 (Intel/AMD) |
 | `latest-tensorrt` | `frigate:0.17.1-tensorrt` | NVIDIA GPU with TensorRT |
-| `latest-rk` | `frigate:0.17.1-rk` | Rockchip SoCs |
 | `latest-rocm` | `frigate:0.17.1-rocm` | AMD GPU with ROCm |
-| `latest-tensorrt-jp6` | `frigate:0.17.1-tensorrt-jp6` | NVIDIA Jetson (JetPack 6) |
-| `latest-synaptics` | `frigate:0.17.1-synaptics` | Synaptics accelerator |
 
 Pinned version tags are also available (e.g. `frigate-0.17.1-tensorrt`).
 

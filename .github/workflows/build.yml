@@ -32,14 +32,8 @@ jobs:
             tag_suffix: ""
           - suffix: "-tensorrt"
             tag_suffix: "-tensorrt"
-          - suffix: "-rk"
-            tag_suffix: "-rk"
           - suffix: "-rocm"
             tag_suffix: "-rocm"
-          - suffix: "-tensorrt-jp6"
-            tag_suffix: "-tensorrt-jp6"
-          - suffix: "-synaptics"
-            tag_suffix: "-synaptics"
 
     steps:
       - name: Checkout
