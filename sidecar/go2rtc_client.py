@@ -23,6 +23,24 @@ def is_variant_stream(name: str) -> bool:
     return ABR_VARIANT_PREFIX in name
 
 
+def make_variant_source(camera: str, tier: QualityTier) -> str:
+    """Build the go2rtc ffmpeg source string for an ABR variant.
+
+    Transcodes the camera's video to H264 at the tier resolution and copies
+    the source audio through unchanged. The ``#audio=copy`` directive is
+    required: once an ffmpeg source specifies any ``#video=`` transcode
+    option, go2rtc produces a video-only stream unless audio is requested
+    too, which leaves the live transcoded stream silent. Copying (rather
+    than re-encoding) preserves the original audio codec and lets go2rtc
+    transcode it per-consumer (opus for WebRTC, AAC for MSE) exactly as it
+    already does for the original stream.
+    """
+    return (
+        f"ffmpeg:{camera}#video=h264"
+        f"#width={tier.width}#height={tier.height}#audio=copy"
+    )
+
+
 async def get_streams(
     client: httpx.AsyncClient, base_url: str = GO2RTC_API
 ) -> dict[str, dict]:
@@ -40,7 +58,7 @@ async def register_variant(
 ) -> bool:
     """Register a quality variant stream in go2rtc using ffmpeg transcoding."""
     variant_name = make_variant_name(camera, tier)
-    source = f"ffmpeg:{camera}#video=h264#width={tier.width}#height={tier.height}"
+    source = make_variant_source(camera, tier)
 
     try:
         resp = await client.put(
