@@ -2,7 +2,7 @@ name: Build and Push Docker Image
 
 on:
   push:
-    branches: [master]
+    branches: ["**"]
     tags: ["v*"]
   pull_request:
     branches: [master]
@@ -16,6 +16,12 @@ on:
         description: "Build all variants (tensorrt, rocm)"
         type: boolean
         default: false
+
+# Cancel superseded runs for the same ref so rapid pushes to a test branch
+# don't pile up full image builds.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 env:
   REGISTRY: ghcr.io
@@ -58,6 +64,7 @@ jobs:
           tags: |
             type=raw,value=latest,enable=${{ github.ref == 'refs/heads/master' }}
             type=raw,value=frigate-${{ env.FRIGATE_VERSION }},enable=${{ github.ref == 'refs/heads/master' }}
+            type=ref,event=branch,enable=${{ github.ref != 'refs/heads/master' }}
             type=ref,event=pr
 
       - name: Build and push
