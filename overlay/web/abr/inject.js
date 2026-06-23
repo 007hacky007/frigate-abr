@@ -13,7 +13,25 @@
 (function () {
   "use strict";
 
-  var ABR_CONFIG_URL = "/abr/config";
+  // Derive the URL prefix this script was served under so every /abr/* request
+  // resolves both when Frigate is accessed directly and when it is served
+  // behind a path prefix (e.g. the Home Assistant "Frigate Proxy" add-on serves
+  // the UI under /api/hassio_ingress/<token>/). The injected <script> src is
+  // prefixed with that same path by nginx, so document.currentScript.src
+  // already carries it here.
+  function abrBaseFromPath(pathname) {
+    return pathname.replace(/\/abr\/static\/inject\.js.*$/, "");
+  }
+
+  var ABR_BASE = (function () {
+    try {
+      var s = document.currentScript && document.currentScript.src;
+      if (s) return abrBaseFromPath(new URL(s, window.location.href).pathname);
+    } catch (e) { /* fall back below */ }
+    return window.baseUrl ? String(window.baseUrl).replace(/\/$/, "") : "";
+  })();
+
+  var ABR_CONFIG_URL = ABR_BASE + "/abr/config";
   var STORAGE_KEY_LIVE = "frigate-abr-live-quality";
   var STORAGE_KEY_RECORDING = "frigate-abr-recording-quality";
   var ABR_VARIANT_PREFIX = "_abr_";
@@ -383,11 +401,21 @@
     container.appendChild(wrapper);
   }
 
+  function routePath(pathname, baseUrl) {
+    // Strip the ingress/base prefix (window.baseUrl) so the route checks below
+    // match in both direct and proxied (Home Assistant ingress) contexts.
+    var base = (baseUrl || "/").replace(/\/$/, "");
+    if (base && pathname.indexOf(base) === 0) {
+      return pathname.substring(base.length) || "/";
+    }
+    return pathname;
+  }
+
   function isLiveContext(container) {
     // Check if this is a live player (has data-camera or is inside a live view)
     if (container.dataset && container.dataset.camera) return true;
     // Check URL - live views are typically at /cameras/ or root
-    var path = window.location.pathname;
+    var path = routePath(window.location.pathname, window.baseUrl);
     if (path === "/" || path.indexOf("/cameras") === 0) return true;
     // Recording views are at /review or /history
     if (path.indexOf("/review") === 0 || path.indexOf("/history") === 0) return false;

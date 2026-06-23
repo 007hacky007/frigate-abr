@@ -89,10 +89,17 @@ fi
 # The target anchor is the existing sub_filter for <body> injection:
 #   sub_filter '<body>' '<body><script>window.baseUrl=...
 # We insert our sub_filter right before that line.
+#
+# The script/style URLs are prefixed with $http_x_ingress_path - the same
+# variable Frigate uses for all its own assets - so the overlay loads both
+# when Frigate is accessed directly (header empty -> "/abr/...") and when it is
+# served behind a path prefix such as the Home Assistant "Frigate Proxy"
+# add-on (header set -> "/api/hassio_ingress/<token>/abr/..."). The literal
+# $ is escaped (\$) so bash passes it through to nginx unexpanded.
 if ! grep -q "abr/static/inject.js" "$NGINX_CONF"; then
     if grep -q "sub_filter '<body>'" "$NGINX_CONF"; then
         sed -i "/sub_filter '<body>'/i\\
-            sub_filter '</head>' '<script src=\"/abr/static/inject.js\"></script><link rel=\"stylesheet\" href=\"/abr/static/inject.css\"/></head>';" "$NGINX_CONF" \
+            sub_filter '</head>' '<script src=\"\$http_x_ingress_path/abr/static/inject.js\"></script><link rel=\"stylesheet\" href=\"\$http_x_ingress_path/abr/static/inject.css\"/></head>';" "$NGINX_CONF" \
             && echo "[ABR] Added sub_filter for frontend overlay injection." \
             || echo "[ABR] WARNING: Failed to add sub_filter for script injection."
     else

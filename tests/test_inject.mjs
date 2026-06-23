@@ -54,6 +54,18 @@ function rewriteLiveWsUrl(url, quality) {
   });
 }
 
+function abrBaseFromPath(pathname) {
+  return pathname.replace(/\/abr\/static\/inject\.js.*$/, "");
+}
+
+function routePath(pathname, baseUrl) {
+  var base = (baseUrl || "/").replace(/\/$/, "");
+  if (base && pathname.indexOf(base) === 0) {
+    return pathname.substring(base.length) || "/";
+  }
+  return pathname;
+}
+
 // --- VOD URL Detection Tests ---
 
 describe("isVodUrl", () => {
@@ -266,5 +278,48 @@ describe("rewriteLiveWsUrl", () => {
       ),
       "ws://host/live/mse/api/ws?src=cam_abr_720p&video=all&audio=all"
     );
+  });
+});
+
+// --- Ingress base-path handling (Home Assistant proxy) ---
+
+describe("abrBaseFromPath", () => {
+  it("returns empty base for direct access", () => {
+    // Header empty -> script served at root -> /abr/config
+    assert.equal(abrBaseFromPath("/abr/static/inject.js"), "");
+    assert.equal(abrBaseFromPath("/abr/static/inject.js") + "/abr/config", "/abr/config");
+  });
+
+  it("derives the ingress prefix when served behind a proxy", () => {
+    assert.equal(
+      abrBaseFromPath("/api/hassio_ingress/abc123/abr/static/inject.js"),
+      "/api/hassio_ingress/abc123"
+    );
+    assert.equal(
+      abrBaseFromPath("/api/hassio_ingress/abc123/abr/static/inject.js") + "/abr/config",
+      "/api/hassio_ingress/abc123/abr/config"
+    );
+  });
+
+  it("ignores a query string on the script URL", () => {
+    assert.equal(
+      abrBaseFromPath("/api/hassio_ingress/abc123/abr/static/inject.js?v=2"),
+      "/api/hassio_ingress/abc123"
+    );
+  });
+});
+
+describe("routePath", () => {
+  it("passes through unchanged when not behind ingress", () => {
+    assert.equal(routePath("/cameras", "/"), "/cameras");
+    assert.equal(routePath("/review", "/"), "/review");
+    assert.equal(routePath("/", "/"), "/");
+  });
+
+  it("strips the ingress base so route checks still match", () => {
+    var base = "/api/hassio_ingress/abc123/";
+    assert.equal(routePath("/api/hassio_ingress/abc123/cameras", base), "/cameras");
+    assert.equal(routePath("/api/hassio_ingress/abc123/review", base), "/review");
+    assert.equal(routePath("/api/hassio_ingress/abc123/", base), "/");
   });
 });
