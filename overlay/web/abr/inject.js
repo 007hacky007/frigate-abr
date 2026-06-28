@@ -69,14 +69,17 @@
     overlay.title = "Play";
     overlay.style.cssText =
       "position:absolute;top:0;left:0;right:0;bottom:0;display:flex;" +
-      "align-items:center;justify-content:center;background:rgba(0,0,0,0.45);" +
-      "cursor:pointer;z-index:30;";
+      "flex-direction:column;align-items:center;justify-content:center;" +
+      "background:rgba(0,0,0,0.45);cursor:pointer;z-index:30;";
     overlay.innerHTML =
       '<div style="width:68px;height:68px;border-radius:50%;' +
       "background:rgba(0,0,0,0.6);border:2px solid rgba(255,255,255,0.85);" +
       'display:flex;align-items:center;justify-content:center;">' +
       '<svg width="34" height="34" viewBox="0 0 24 24" fill="#fff">' +
-      '<path d="M8 5v14l11-7z"/></svg></div>';
+      '<path d="M8 5v14l11-7z"/></svg></div>' +
+      '<div style="margin-top:10px;max-width:90%;text-align:center;color:#fff;' +
+      "font:500 13px/1.3 system-ui,-apple-system,sans-serif;" +
+      'text-shadow:0 1px 2px rgba(0,0,0,0.8);">Autoplay disabled in the browser</div>';
 
     function remove() {
       videoEl.removeEventListener("playing", remove);
