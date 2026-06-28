@@ -9,9 +9,9 @@ on:
   workflow_dispatch:
     inputs:
       frigate_version:
-        description: "Frigate base version (e.g. 0.17.1)"
+        description: "Frigate base version (e.g. 0.17.2)"
         required: false
-        default: "0.17.1"
+        default: "0.17.2"
       all_variants:
         description: "Build all variants (tensorrt, rocm)"
         type: boolean
