@@ -70,6 +70,10 @@ function shouldRetryMuted(err, isMuted) {
   return !!err && err.name === "NotAllowedError" && !isMuted;
 }
 
+function isAutoplayBlocked(err) {
+  return !!err && err.name === "NotAllowedError";
+}
+
 // --- VOD URL Detection Tests ---
 
 describe("isVodUrl", () => {
@@ -341,5 +345,16 @@ describe("shouldRetryMuted (autoplay fallback)", () => {
     assert.equal(shouldRetryMuted({ name: "AbortError" }, false), false);
     assert.equal(shouldRetryMuted({ name: "NotSupportedError" }, false), false);
     assert.equal(shouldRetryMuted(null, false), false);
+  });
+});
+
+describe("isAutoplayBlocked (show play button)", () => {
+  it("is true for autoplay-policy rejections (incl. already-muted, e.g. Firefox)", () => {
+    assert.equal(isAutoplayBlocked({ name: "NotAllowedError" }), true);
+  });
+
+  it("is false for unrelated errors or no error", () => {
+    assert.equal(isAutoplayBlocked({ name: "AbortError" }), false);
+    assert.equal(isAutoplayBlocked(null), false);
   });
 });

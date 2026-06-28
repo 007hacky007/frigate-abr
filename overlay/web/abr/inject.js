@@ -54,6 +54,57 @@
     return !!err && err.name === "NotAllowedError" && !isMuted;
   }
 
+  function isAutoplayBlocked(err) {
+    return !!err && err.name === "NotAllowedError";
+  }
+
+  // Overlay a manual play button when the browser blocks autoplay entirely
+  // (e.g. Firefox "Block Audio and Video", which blocks even muted autoplay).
+  // A click is a user gesture, which is always allowed to start playback.
+  function showPlayButton(videoEl) {
+    var container = findPlayerContainer(videoEl);
+    if (!container || container.querySelector(".abr-play-overlay")) return;
+    if (window.getComputedStyle(container).position === "static") {
+      container.style.position = "relative";
+    }
+
+    var overlay = document.createElement("div");
+    overlay.className = "abr-play-overlay";
+    overlay.title = "Play";
+    overlay.style.cssText =
+      "position:absolute;top:0;left:0;right:0;bottom:0;display:flex;" +
+      "align-items:center;justify-content:center;background:rgba(0,0,0,0.45);" +
+      "cursor:pointer;z-index:30;";
+    overlay.innerHTML =
+      '<div style="width:68px;height:68px;border-radius:50%;' +
+      "background:rgba(0,0,0,0.6);border:2px solid rgba(255,255,255,0.85);" +
+      'display:flex;align-items:center;justify-content:center;">' +
+      '<svg width="34" height="34" viewBox="0 0 24 24" fill="#fff">' +
+      '<path d="M8 5v14l11-7z"/></svg></div>';
+
+    function remove() {
+      videoEl.removeEventListener("playing", remove);
+      if (overlay.parentNode) overlay.parentNode.removeChild(overlay);
+    }
+    overlay.addEventListener("click", function (e) {
+      e.preventDefault();
+      e.stopPropagation();
+      // User gesture: unmuted playback is permitted. Fall back to muted only
+      // if the unmuted attempt is somehow still rejected.
+      videoEl.muted = false;
+      var p = videoEl.play();
+      if (p && typeof p.catch === "function") {
+        p.catch(function () {
+          videoEl.muted = true;
+          videoEl.play().catch(function () {});
+        });
+      }
+      remove();
+    });
+    videoEl.addEventListener("playing", remove);
+    container.appendChild(overlay);
+  }
+
   function installAutoplayFallback() {
     var proto = window.HTMLMediaElement && window.HTMLMediaElement.prototype;
     if (!proto || proto.__abrAutoplayPatched) return;
@@ -68,17 +119,24 @@
       } catch (e) {
         return origPlay.apply(el, args);
       }
-      if (result && typeof result.catch === "function") {
-        return result.catch(function (err) {
-          if (shouldRetryMuted(err, el.muted)) {
-            el.muted = true;
-            console.log("[ABR] Autoplay blocked by browser policy; retrying muted (unmute to hear audio)");
-            return origPlay.apply(el, args);
+      if (!result || typeof result.catch !== "function") return result;
+      return result.catch(function (err) {
+        if (shouldRetryMuted(err, el.muted)) {
+          // Chrome allows muted autoplay; retry muted (user can unmute).
+          el.muted = true;
+          var muted = origPlay.apply(el, args);
+          if (muted && typeof muted.catch === "function") {
+            return muted.catch(function (err2) {
+              // Firefox "Block Audio and Video" rejects muted autoplay too.
+              if (isAutoplayBlocked(err2)) showPlayButton(el);
+              throw err2;
+            });
           }
-          throw err;
-        });
-      }
-      return result;
+          return muted;
+        }
+        if (isAutoplayBlocked(err)) showPlayButton(el);
+        throw err;
+      });
     };
   }
 
