@@ -44,16 +44,12 @@
 
   // --- Autoplay resilience ---
   // Our ABR streams carry an audio track (live via go2rtc #audio=copy,
-  // recordings via AAC). Browsers refuse to autoplay *unmuted* media on
-  // origins without enough "media engagement" - e.g. a freshly used
-  // https://host:8971 origin - which shows up as a grey/stuck player plus a
-  // "play() not allowed" console error even though the stream loaded fine.
-  // Muted playback is always permitted, so when play() is rejected by policy
-  // we retry muted; the user can unmute afterwards (a user gesture is allowed).
-  function shouldRetryMuted(err, isMuted) {
-    return !!err && err.name === "NotAllowedError" && !isMuted;
-  }
-
+  // recordings via AAC). Browsers refuse to autoplay media on origins without
+  // enough "media engagement" (Chrome) or when autoplay is disabled outright
+  // (Firefox "Block Audio and Video"), which shows up as a grey/stuck player
+  // plus a "play() not allowed" console error even though the stream loaded
+  // fine. When play() is rejected by autoplay policy we overlay a manual play
+  // button; a user click is always permitted to start playback.
   function isAutoplayBlocked(err) {
     return !!err && err.name === "NotAllowedError";
   }
@@ -121,19 +117,9 @@
       }
       if (!result || typeof result.catch !== "function") return result;
       return result.catch(function (err) {
-        if (shouldRetryMuted(err, el.muted)) {
-          // Chrome allows muted autoplay; retry muted (user can unmute).
-          el.muted = true;
-          var muted = origPlay.apply(el, args);
-          if (muted && typeof muted.catch === "function") {
-            return muted.catch(function (err2) {
-              // Firefox "Block Audio and Video" rejects muted autoplay too.
-              if (isAutoplayBlocked(err2)) showPlayButton(el);
-              throw err2;
-            });
-          }
-          return muted;
-        }
+        // Autoplay blocked (Chrome low-engagement, Firefox "Block Audio and
+        // Video", etc.): overlay a manual play button. A user click is always
+        // allowed to start playback.
         if (isAutoplayBlocked(err)) showPlayButton(el);
         throw err;
       });

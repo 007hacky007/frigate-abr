@@ -66,10 +66,6 @@ function routePath(pathname, baseUrl) {
   return pathname;
 }
 
-function shouldRetryMuted(err, isMuted) {
-  return !!err && err.name === "NotAllowedError" && !isMuted;
-}
-
 function isAutoplayBlocked(err) {
   return !!err && err.name === "NotAllowedError";
 }
@@ -332,29 +328,14 @@ describe("routePath", () => {
   });
 });
 
-describe("shouldRetryMuted (autoplay fallback)", () => {
-  it("retries muted when play() is blocked by autoplay policy on unmuted media", () => {
-    assert.equal(shouldRetryMuted({ name: "NotAllowedError" }, false), true);
-  });
-
-  it("does not retry if the element is already muted (avoids a loop)", () => {
-    assert.equal(shouldRetryMuted({ name: "NotAllowedError" }, true), false);
-  });
-
-  it("does not swallow unrelated playback errors", () => {
-    assert.equal(shouldRetryMuted({ name: "AbortError" }, false), false);
-    assert.equal(shouldRetryMuted({ name: "NotSupportedError" }, false), false);
-    assert.equal(shouldRetryMuted(null, false), false);
-  });
-});
-
 describe("isAutoplayBlocked (show play button)", () => {
-  it("is true for autoplay-policy rejections (incl. already-muted, e.g. Firefox)", () => {
+  it("is true for any autoplay-policy rejection (Chrome low-engagement, Firefox block)", () => {
     assert.equal(isAutoplayBlocked({ name: "NotAllowedError" }), true);
   });
 
   it("is false for unrelated errors or no error", () => {
     assert.equal(isAutoplayBlocked({ name: "AbortError" }), false);
+    assert.equal(isAutoplayBlocked({ name: "NotSupportedError" }), false);
     assert.equal(isAutoplayBlocked(null), false);
   });
 });
