@@ -42,6 +42,50 @@
   // Track active live WebSockets so we can close them on quality change
   var activeLiveWebSockets = [];
 
+  // --- Autoplay resilience ---
+  // Our ABR streams carry an audio track (live via go2rtc #audio=copy,
+  // recordings via AAC). Browsers refuse to autoplay *unmuted* media on
+  // origins without enough "media engagement" - e.g. a freshly used
+  // https://host:8971 origin - which shows up as a grey/stuck player plus a
+  // "play() not allowed" console error even though the stream loaded fine.
+  // Muted playback is always permitted, so when play() is rejected by policy
+  // we retry muted; the user can unmute afterwards (a user gesture is allowed).
+  function shouldRetryMuted(err, isMuted) {
+    return !!err && err.name === "NotAllowedError" && !isMuted;
+  }
+
+  function installAutoplayFallback() {
+    var proto = window.HTMLMediaElement && window.HTMLMediaElement.prototype;
+    if (!proto || proto.__abrAutoplayPatched) return;
+    proto.__abrAutoplayPatched = true;
+    var origPlay = proto.play;
+    proto.play = function () {
+      var el = this;
+      var args = arguments;
+      var result;
+      try {
+        result = origPlay.apply(el, args);
+      } catch (e) {
+        return origPlay.apply(el, args);
+      }
+      if (result && typeof result.catch === "function") {
+        return result.catch(function (err) {
+          if (shouldRetryMuted(err, el.muted)) {
+            el.muted = true;
+            console.log("[ABR] Autoplay blocked by browser policy; retrying muted (unmute to hear audio)");
+            return origPlay.apply(el, args);
+          }
+          throw err;
+        });
+      }
+      return result;
+    };
+  }
+
+  // Install immediately (independent of ABR config) so the wrapper is in place
+  // before Frigate's players call play().
+  installAutoplayFallback();
+
   // --- Initialization ---
 
   function init() {

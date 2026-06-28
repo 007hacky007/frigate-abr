@@ -66,6 +66,10 @@ function routePath(pathname, baseUrl) {
   return pathname;
 }
 
+function shouldRetryMuted(err, isMuted) {
+  return !!err && err.name === "NotAllowedError" && !isMuted;
+}
+
 // --- VOD URL Detection Tests ---
 
 describe("isVodUrl", () => {
@@ -321,5 +325,21 @@ describe("routePath", () => {
     assert.equal(routePath("/api/hassio_ingress/abc123/cameras", base), "/cameras");
     assert.equal(routePath("/api/hassio_ingress/abc123/review", base), "/review");
     assert.equal(routePath("/api/hassio_ingress/abc123/", base), "/");
+  });
+});
+
+describe("shouldRetryMuted (autoplay fallback)", () => {
+  it("retries muted when play() is blocked by autoplay policy on unmuted media", () => {
+    assert.equal(shouldRetryMuted({ name: "NotAllowedError" }, false), true);
+  });
+
+  it("does not retry if the element is already muted (avoids a loop)", () => {
+    assert.equal(shouldRetryMuted({ name: "NotAllowedError" }, true), false);
+  });
+
+  it("does not swallow unrelated playback errors", () => {
+    assert.equal(shouldRetryMuted({ name: "AbortError" }, false), false);
+    assert.equal(shouldRetryMuted({ name: "NotSupportedError" }, false), false);
+    assert.equal(shouldRetryMuted(null, false), false);
   });
 });
