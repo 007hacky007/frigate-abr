@@ -46,8 +46,13 @@ if grep -q "include base_path.conf;" "$NGINX_CONF"; then
             expires off;\
         }\
 \
-        # ABR sidecar - API endpoints\
+        # ABR sidecar - API endpoints (config + transcoded recording HLS).\
+        # These serve recording-derived media, so they MUST be authenticated.\
+        # The sidecar fetches source recordings from Frigate as admin, so an\
+        # unauthenticated /abr/ would expose recordings for any camera to any\
+        # caller. auth_request.conf mirrors Frigate /vod/ and /recordings/.\
         location /abr/ {\
+            include auth_request.conf;\
             proxy_pass http://abr_sidecar/abr/;\
             proxy_http_version 1.1;\
             proxy_set_header Host $host;\

@@ -26,7 +26,7 @@ concurrency:
 env:
   REGISTRY: ghcr.io
   IMAGE_NAME: ${{ github.repository }}
-  FRIGATE_BASE_VERSION: "0.17.1"
+  FRIGATE_BASE_VERSION: "0.17.2"
 
 jobs:
   build-standard:
@@ -154,7 +154,7 @@ jobs:
       - name: Check for new Frigate release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          CURRENT_VERSION: "0.17.1"
+          CURRENT_VERSION: "0.17.2"
         run: |
           LATEST=$(gh api repos/blakeblackshear/frigate/releases/latest --jq .tag_name | sed 's/^v//')
 

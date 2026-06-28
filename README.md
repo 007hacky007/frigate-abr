@@ -46,7 +46,7 @@ services:
 docker compose up -d
 ```
 
-That's it. The image is based on Frigate `0.17.1` with the ABR overlay pre-installed.
+That's it. The image is based on Frigate `0.17.2` with the ABR overlay pre-installed.
 
 ### Available tags
 
@@ -54,11 +54,11 @@ Images are built for all Frigate variants:
 
 | Tag | Base image | Use case |
 |-----|-----------|----------|
-| `latest` | `frigate:0.17.1` | Standard x86_64 (Intel/AMD) |
-| `latest-tensorrt` | `frigate:0.17.1-tensorrt` | NVIDIA GPU with TensorRT |
-| `latest-rocm` | `frigate:0.17.1-rocm` | AMD GPU with ROCm |
+| `latest` | `frigate:0.17.2` | Standard x86_64 (Intel/AMD) |
+| `latest-tensorrt` | `frigate:0.17.2-tensorrt` | NVIDIA GPU with TensorRT |
+| `latest-rocm` | `frigate:0.17.2-rocm` | AMD GPU with ROCm |
 
-Pinned version tags are also available (e.g. `frigate-0.17.1-tensorrt`).
+Pinned version tags are also available (e.g. `frigate-0.17.2-tensorrt`).
 
 To build locally for a specific variant:
 
@@ -70,10 +70,10 @@ cd frigate-abr
 docker build -t frigate-abr .
 
 # NVIDIA TensorRT
-docker build --build-arg FRIGATE_VERSION=0.17.1-tensorrt -t frigate-abr:tensorrt .
+docker build --build-arg FRIGATE_VERSION=0.17.2-tensorrt -t frigate-abr:tensorrt .
 
 # Rockchip
-docker build --build-arg FRIGATE_VERSION=0.17.1-rk -t frigate-abr:rk .
+docker build --build-arg FRIGATE_VERSION=0.17.2-rk -t frigate-abr:rk .
 ```
 
 ## Hardware acceleration

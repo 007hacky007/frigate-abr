@@ -1,4 +1,4 @@
-ARG FRIGATE_VERSION=0.17.1
+ARG FRIGATE_VERSION=0.17.2
 FROM ghcr.io/blakeblackshear/frigate:${FRIGATE_VERSION}
 
 # Build metadata - set by CI or docker build
