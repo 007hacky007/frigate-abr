@@ -167,8 +167,10 @@ describe("VOD ABR flow (on-demand segment transcoding)", () => {
     var rewritten = rewriteVodUrl(master, quality);
     assert.equal(rewritten, "/abr/hls/cam/start/100/end/200/playlist.m3u8?quality=720p");
 
-    // 2. Sidecar playlist returns segment URLs like /abr/hls/.../segment/0.ts
-    //    These go directly to the sidecar, no interception needed
+    // 2. Sidecar playlist returns relative segment URIs that hls.js resolves
+    //    against the playlist URL, e.g. /abr/hls/.../segment/0.ts (or the
+    //    ingress-prefixed equivalent). These go directly to the sidecar,
+    //    no interception needed
     var seg = "/abr/hls/cam/start/100/end/200/segment/0.ts?quality=720p";
     assert.ok(!isVodUrl(seg), "sidecar segment URL should NOT be rewritten");
   });

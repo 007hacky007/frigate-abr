@@ -341,8 +341,6 @@ async def vod_abr_playlist(
         "#EXT-X-PLAYLIST-TYPE:VOD",
     ]
 
-    base_url = f"/abr/hls/{camera_name}/start/{int(start_ts)}/end/{int(end_ts)}"
-
     for i, clip in enumerate(clips):
         if i >= len(durations):
             break
@@ -351,7 +349,9 @@ async def vod_abr_playlist(
         # so we must signal a discontinuity between every segment.
         lines.append("#EXT-X-DISCONTINUITY")
         lines.append(f"#EXTINF:{duration_s:.3f},")
-        lines.append(f"{base_url}/segment/{i}.ts?quality={quality}")
+        # Relative URI: resolves against the playlist URL, so it keeps working
+        # behind path-prefix reverse proxies (e.g. Home Assistant ingress).
+        lines.append(f"segment/{i}.ts?quality={quality}")
 
     lines.append("#EXT-X-ENDLIST")
 
