@@ -6,6 +6,8 @@ Run with: python3 -m pytest tests/test_transcoder.py -v
 import sys
 from pathlib import Path
 
+import pytest
+
 # Add sidecar to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
@@ -172,3 +174,37 @@ class TestBuildCmd:
         assert "-f" in cmd
         f_idx = cmd.index("-f")
         assert cmd[f_idx + 1] == "mpegts"
+
+
+import asyncio  # noqa: E402
+
+from tests.ts_helpers import FFMPEG, first_pts, make_ts, needs_ffmpeg  # noqa: E402
+
+
+@needs_ffmpeg
+class TestShiftTimestamps:
+    def _transcoder(self, tmp_path):
+        return ABRTranscoder(
+            ffmpeg_path=FFMPEG, hwaccel_preset="default", gpu=0,
+            cache_dir=str(tmp_path / "cache"),
+        )
+
+    def test_video_pts_shifted_by_offset(self, tmp_path):
+        src = make_ts(tmp_path / "src.ts")
+        data = asyncio.run(self._transcoder(tmp_path).shift_timestamps(str(src), 12.5))
+        out = tmp_path / "out.ts"
+        out.write_bytes(data)
+        assert first_pts(out) == pytest.approx(first_pts(src) + 12.5, abs=0.001)
+
+    def test_audio_pts_shifted_by_same_offset(self, tmp_path):
+        src = make_ts(tmp_path / "src.ts")
+        data = asyncio.run(self._transcoder(tmp_path).shift_timestamps(str(src), 12.5))
+        out = tmp_path / "out.ts"
+        out.write_bytes(data)
+        assert first_pts(out, "a:0") == pytest.approx(first_pts(src, "a:0") + 12.5, abs=0.001)
+
+    def test_returns_none_when_source_missing(self, tmp_path):
+        result = asyncio.run(
+            self._transcoder(tmp_path).shift_timestamps(str(tmp_path / "missing.ts"), 1.0)
+        )
+        assert result is None

@@ -5,6 +5,8 @@ Run with: python3 -m pytest tests/test_app.py -v
 
 import asyncio
 import sys
+
+import pytest
 from pathlib import Path
 
 # Add sidecar to path
@@ -64,3 +66,51 @@ class TestVodPlaylist:
         assert body.startswith("#EXTM3U")
         assert "#EXT-X-PLAYLIST-TYPE:VOD" in body
         assert body.rstrip().endswith("#EXT-X-ENDLIST")
+
+    def test_playlist_has_no_per_segment_discontinuity(self, monkeypatch):
+        """Segments are served with continuous timestamps (the playlist
+        offset is applied at serve time), so the playlist must not mark
+        every segment boundary as a discontinuity."""
+        body = self._get_playlist(monkeypatch)
+        assert "#EXT-X-DISCONTINUITY" not in body
+
+
+from sidecar.transcoder import ABRTranscoder  # noqa: E402
+from tests.ts_helpers import FFMPEG, first_pts, make_ts, needs_ffmpeg  # noqa: E402
+
+
+@needs_ffmpeg
+class TestVodSegmentTimestamps:
+    def test_segment_pts_offset_by_preceding_durations(self, monkeypatch, tmp_path):
+        """Segment N must start where segments 0..N-1 end on the playlist
+        timeline, so hls.js sees one continuous stream instead of a
+        timestamp reset at every segment."""
+        src = make_ts(tmp_path / "clip.ts")
+        transcoder = ABRTranscoder(
+            ffmpeg_path=FFMPEG, hwaccel_preset="default", gpu=0,
+            cache_dir=str(tmp_path / "cache"),
+        )
+
+        async def fake_get_or_transcode(recording_path, tier, clip_from_ms=None, duration_ms=None):
+            return str(src)
+
+        monkeypatch.setattr(transcoder, "get_or_transcode", fake_get_or_transcode)
+        monkeypatch.setattr(app_module, "transcoder", transcoder)
+        monkeypatch.setattr(
+            app_module, "tiers",
+            [QualityTier(name="480p", width=854, height=480, bitrate="500k")],
+        )
+
+        async def fake_vod(camera_name, start_ts, end_ts):
+            return {
+                "sequences": [{"clips": [{"path": "/a.mp4"}, {"path": "/b.mp4"}, {"path": "/c.mp4"}]}],
+                "durations": [1000, 1500, 1000],
+            }
+
+        monkeypatch.setattr(app_module, "_fetch_frigate_vod", fake_vod)
+
+        resp = asyncio.run(app_module.vod_abr_segment("cam", 1, 2, 2, "480p"))
+        out = tmp_path / "served.ts"
+        out.write_bytes(resp.body if hasattr(resp, "body") else Path(resp.path).read_bytes())
+
+        assert first_pts(out) == pytest.approx(first_pts(src) + 2.5, abs=0.001)

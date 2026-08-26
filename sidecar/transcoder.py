@@ -285,12 +285,54 @@ class ABRTranscoder:
         # Audio: transcode to AAC if present
         parts.extend(["-c:a", "aac", "-b:a", "128k", "-ac", "2"])
 
-        # Output format: MPEG-TS for HLS segment compatibility
-        # Reset timestamps to start from 0 for each segment so hls.js can
-        # sequence them without DTS discontinuities between segments.
+        # Output format: MPEG-TS for HLS segment compatibility.
+        # Timestamps start at 0 so one cached file serves every playlist the
+        # clip appears in; shift_timestamps() moves it to its playlist
+        # position at serve time.
         parts.extend(["-avoid_negative_ts", "make_zero", "-f", "mpegts", output_path])
 
         return parts
+
+    async def shift_timestamps(self, src_path: str, offset_seconds: float) -> bytes | None:
+        """Return the cached segment remuxed so its timestamps start at
+        ``offset_seconds`` on the playlist timeline.
+
+        Cached segments are transcoded with timestamps starting at zero so one
+        cache entry serves every playlist the clip appears in. Shifting them at
+        serve time (stream copy, no re-encode, about 40 ms for a 1080p segment)
+        gives hls.js one continuous timeline instead of a discontinuity per
+        segment. Returns None if ffmpeg fails.
+        """
+        cmd = [
+            self.ffmpeg_path, "-hide_banner", "-loglevel", "error",
+            "-i", src_path,
+            "-c", "copy",
+            "-output_ts_offset", f"{offset_seconds:.3f}",
+            "-f", "mpegts", "pipe:1",
+        ]
+        try:
+            proc = await asyncio.create_subprocess_exec(
+                *cmd,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            )
+            data, stderr = await asyncio.wait_for(proc.communicate(), timeout=60)
+        except asyncio.TimeoutError:
+            logger.error("Timestamp shift timed out for %s", src_path)
+            proc.kill()
+            await proc.wait()
+            return None
+        except Exception:
+            logger.exception("Timestamp shift failed for %s", src_path)
+            return None
+
+        if proc.returncode != 0 or not data:
+            logger.warning(
+                "ffmpeg exit %d shifting %s: %s",
+                proc.returncode, src_path, stderr.decode(errors="replace")[-300:],
+            )
+            return None
+        return data
 
     async def _run_ffmpeg(self, cmd: list[str], output_path: str) -> bool:
         """Run an ffmpeg command. Returns True on success."""
@@ -340,10 +382,10 @@ class ABRTranscoder:
         clip_from_ms: int | None = None,
         duration_ms: int | None = None,
     ) -> bool:
-        """Run ffmpeg to transcode a recording segment.
-
-        Tries the configured hwaccel preset first. If it fails (e.g. VAAPI
-        memory allocation error), automatically retries with CPU-only encoding.
+        """Run ffmpeg to transcode a recording segment with the configured
+        hwaccel preset. There is no automatic CPU retry: a failed transcode
+        returns False and the caller reports it, so set ``hwaccel: default``
+        in config.yml on hosts where the GPU path does not work.
         """
         logger.info(
             "Transcoding %s -> %s (%s, clip_from=%s, duration=%s)",

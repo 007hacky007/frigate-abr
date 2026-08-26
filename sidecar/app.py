@@ -10,7 +10,7 @@ import httpx
 import re
 import yaml
 from fastapi import FastAPI, HTTPException, Path as PathParam
-from fastapi.responses import FileResponse, PlainTextResponse
+from fastapi.responses import PlainTextResponse, Response
 from fastapi.staticfiles import StaticFiles
 
 CAMERA_NAME_RE = r"^[a-zA-Z0-9_-]+$"
@@ -345,9 +345,9 @@ async def vod_abr_playlist(
         if i >= len(durations):
             break
         duration_s = durations[i] / 1000.0
-        # Each segment is transcoded independently with timestamps starting at 0,
-        # so we must signal a discontinuity between every segment.
-        lines.append("#EXT-X-DISCONTINUITY")
+        # No EXT-X-DISCONTINUITY here: the segment endpoint shifts each
+        # segment's timestamps to its position on this timeline, so hls.js
+        # sees one continuous stream.
         lines.append(f"#EXTINF:{duration_s:.3f},")
         # Relative URI: resolves against the playlist URL, so it keeps working
         # behind path-prefix reverse proxies (e.g. Home Assistant ingress).
@@ -407,8 +407,15 @@ async def vod_abr_segment(
     if not transcoded_path:
         raise HTTPException(500, "Transcoding failed")
 
-    return FileResponse(
-        transcoded_path,
+    # Cached segments start at t=0. Shift this one to where the preceding
+    # segments end on the playlist timeline so playback is continuous.
+    offset_seconds = sum(durations[:index]) / 1000.0
+    data = await transcoder.shift_timestamps(transcoded_path, offset_seconds)
+    if data is None:
+        raise HTTPException(500, "Timestamp shift failed")
+
+    return Response(
+        content=data,
         media_type="video/mp2t",
         headers={"Cache-Control": "public, max-age=3600"},
     )

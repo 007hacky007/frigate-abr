@@ -185,7 +185,7 @@ I tried this first. Frigate already uses nginx-vod-module for HLS playback, so i
 
 2. **nginx-vod-module needs the entire manifest upfront.** It makes a single subrequest to get a JSON manifest with ALL clip paths, then generates the HLS playlist from that. The sidecar had to transcode ALL 300+ segments before returning the manifest. A 1-hour recording would take 30+ minutes to transcode upfront, and the subrequest would time out long before that.
 
-The solution: bypass nginx-vod-module entirely for ABR. The sidecar generates its own m3u8 playlist and serves MPEG-TS segments on-demand. hls.js requests them one at a time, each transcodes in ~1-2 seconds with QSV, and they're cached after first play.
+The solution: bypass nginx-vod-module entirely for ABR. The sidecar generates its own m3u8 playlist and serves MPEG-TS segments on-demand. hls.js requests them one at a time, each transcodes in ~1-2 seconds with QSV, and they're cached after first play. Cached segments are transcoded with timestamps starting at zero and shifted to their playlist position at serve time (a stream-copy remux, no re-encode), so the playlist is one continuous timeline with no per-segment discontinuities and a cached segment stays valid in every playlist it appears in.
 
 ### Why does the VAAPI preset use QSV internally?
 
