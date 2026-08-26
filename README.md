@@ -28,6 +28,25 @@ For very slow uplinks (satellite, weak cellular), add a lower tier instead of sq
     bitrate: "250k"
 ```
 
+### Which tier to expect where
+
+Wire rate is the tier's video bitrate plus the camera's audio and mux overhead
+(typically +100-150 kbit/s). Pick the highest tier your remote uplink sustains
+with ~1.5x headroom.
+
+| Tier | ~Wire rate | Works on | What to expect |
+|------|-----------|----------|----------------|
+| Original | camera bitrate | LAN, fast uplinks | native quality |
+| 1080p @ 2500k | ~2.7 Mbit/s | uplink >= 4 Mbit/s | crisp static scenes, mild softening during heavy motion |
+| 720p @ 1200k | ~1.4 Mbit/s | uplink >= 2 Mbit/s | good on phone/tablet screens, near-field detail preserved |
+| 480p @ 500k | ~0.65 Mbit/s | uplink >= 1 Mbit/s | overview quality: see what happened, not fine detail |
+| 360p @ 250k (optional) | ~0.4 Mbit/s | satellite, weak cellular | motion and presence visible, faces and plates are not |
+
+Halving these bitrates roughly doubles the reach of each tier at a visible
+quality cost, mostly during motion; since live streams started honoring the
+configured bitrate, lean overrides that previously only affected recordings
+now shape live quality too.
+
 ### Live bitrate enforcement
 
 Live variants cap the video track at the tier's bitrate (applied to go2rtc's
