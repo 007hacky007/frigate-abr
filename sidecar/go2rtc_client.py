@@ -39,7 +39,9 @@ def make_variant_source(
     already does for the original stream.
 
     With enforce_bitrate (the default), the tier's bitrate is applied to the
-    encoder via go2rtc's ``#raw=`` parameter, capping the video track only;
+    encoder via repeated ``#raw=`` parameters (one space-free token each,
+    since go2rtc rejects dynamic sources containing whitespace), capping the
+    video track only;
     copied audio rides on top of the cap. Invalid bitrate strings are skipped
     with a warning rather than injected.
     """
@@ -49,8 +51,15 @@ def make_variant_source(
     )
     if enforce_bitrate:
         if is_valid_bitrate(tier.bitrate):
+            # go2rtc's streams.Validate() rejects any dynamically registered
+            # source containing whitespace ("not allow creating dynamic
+            # streams with spaces in the source"), so each ffmpeg token gets
+            # its own #raw= param. go2rtc collects repeated raw params and
+            # joins codec entries with single spaces, reconstructing
+            # "-b:v Nk -maxrate Nk -bufsize 2Nk" in the final command.
             kbps = _parse_bitrate_kbps(tier.bitrate)
-            source += f"#raw=-b:v {kbps}k -maxrate {kbps}k -bufsize {2 * kbps}k"
+            tokens = ["-b:v", f"{kbps}k", "-maxrate", f"{kbps}k", "-bufsize", f"{2 * kbps}k"]
+            source += "".join(f"#raw={tok}" for tok in tokens)
         else:
             logger.warning(
                 "Tier %s has invalid bitrate %r; live variant registered "

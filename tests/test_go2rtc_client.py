@@ -44,9 +44,18 @@ from sidecar.go2rtc_client import find_missing_variants, is_valid_bitrate  # noq
 
 
 class TestBitrateEnforcement:
-    def test_raw_bitrate_args_appended(self):
+    def test_raw_bitrate_args_appended_as_spaceless_tokens(self):
+        # go2rtc's streams.Validate() rejects any dynamic (API-registered)
+        # source containing whitespace, so each ffmpeg token must travel in
+        # its own #raw= param; go2rtc joins codec entries with spaces.
         src = make_variant_source("front_door", TIER)
-        assert "#raw=-b:v 1200k -maxrate 1200k -bufsize 2400k" in src
+        assert (
+            "#raw=-b:v#raw=1200k#raw=-maxrate#raw=1200k#raw=-bufsize#raw=2400k"
+            in src
+        )
+
+    def test_source_contains_no_whitespace(self):
+        assert " " not in make_variant_source("front_door", TIER)
 
     def test_raw_comes_after_template_params(self):
         # go2rtc parses #-separated params; raw must not swallow width/height.
@@ -67,7 +76,7 @@ class TestBitrateEnforcement:
     def test_fractional_megabit_normalized(self):
         t = QualityTier(name="1080p", width=1920, height=1080, bitrate="2.5M")
         src = make_variant_source("cam", t)
-        assert "#raw=-b:v 2500k -maxrate 2500k -bufsize 5000k" in src
+        assert "#raw=-b:v#raw=2500k#raw=-maxrate#raw=2500k#raw=-bufsize#raw=5000k" in src
 
 
 class TestBitrateValidation:
