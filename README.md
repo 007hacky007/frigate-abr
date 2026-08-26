@@ -17,7 +17,16 @@ Adaptive bitrate streaming overlay for [Frigate NVR](https://github.com/blakebla
 | 720p | 1280x720 | 1200k | Mobile / moderate |
 | 480p | 854x480 | 500k | Slow connections |
 
-These are conservative defaults tuned for security camera footage (mostly static scenes). Configurable in `config.yml`.
+These are conservative defaults tuned for security camera footage (mostly static scenes), assuming cameras around 20-25 fps: each tier works out to roughly 0.06 bits per pixel, with about a 2x step between tiers. For 30 fps cameras nudge the bitrates up (~3000k for 1080p); for 10-15 fps streams you can trim them by about a third. Configurable in `config.yml`.
+
+For very slow uplinks (satellite, weak cellular), add a lower tier instead of squeezing the existing ones:
+
+```yaml
+  - name: "360p"
+    width: 640
+    height: 360
+    bitrate: "250k"
+```
 
 ### Live bitrate enforcement
 
