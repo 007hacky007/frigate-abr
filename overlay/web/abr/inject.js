@@ -35,6 +35,7 @@
   var STORAGE_KEY_LIVE = "frigate-abr-live-quality";
   var STORAGE_KEY_RECORDING = "frigate-abr-recording-quality";
   var ABR_VARIANT_PREFIX = "_abr_";
+  var CONFIG_CACHE_KEY = "frigate-abr-config-cache";
 
   var abrConfig = null;
   var abrEnabled = false;
@@ -136,36 +137,85 @@
   // --- Initialization ---
 
   function init() {
-    fetchConfig()
+    // On a saturated link the /abr/config round-trip competes with the very
+    // stream downloads the user wants to escape, so the gear and the URL
+    // interceptors must not wait for it. Activate from the last known good
+    // config immediately; the fresh fetch below refreshes the cache.
+    var cached = null;
+    try { cached = parseCachedConfig(localStorage.getItem(CONFIG_CACHE_KEY)); } catch (e) { /* noop */ }
+    if (cached) {
+      console.log("[ABR] Activating from cached config while fetching a fresh one");
+      activate(cached);
+    }
+
+    fetchConfigWithRetry(3)
       .then(function (cfg) {
-        abrConfig = cfg;
-        abrEnabled = cfg && cfg.enabled && cfg.tiers && cfg.tiers.length > 0;
-        if (!abrEnabled) return;
-
-        console.log("[ABR] Enabled with tiers:", cfg.tiers.map(function (t) { return t.name; }));
-
-        interceptVodRequests();
-        interceptWebSocket();
-        observePlayerMounts();
-
-        // Single global handler to close all quality menus on outside click
-        document.addEventListener("click", function () {
-          var menus = document.querySelectorAll(".abr-quality-menu");
-          for (var m = 0; m < menus.length; m++) {
-            menus[m].style.display = "none";
+        var enabled = cfg && cfg.enabled && cfg.tiers && cfg.tiers.length > 0;
+        try {
+          if (enabled) {
+            localStorage.setItem(CONFIG_CACHE_KEY, JSON.stringify(cfg));
+          } else {
+            localStorage.removeItem(CONFIG_CACHE_KEY);
           }
-        });
+        } catch (e) { /* noop */ }
+        if (enabled) activate(cfg);
       })
       .catch(function () {
-        // Sidecar not running - silently disable
-        console.log("[ABR] Sidecar unavailable, ABR disabled");
+        // Sidecar not running - stay disabled unless the cache activated us
+        if (!abrEnabled) console.log("[ABR] Sidecar unavailable, ABR disabled");
       });
   }
 
+  function activate(cfg) {
+    abrConfig = cfg;
+    if (abrEnabled) return;
+    abrEnabled = true;
+
+    console.log("[ABR] Enabled with tiers:", cfg.tiers.map(function (t) { return t.name; }));
+
+    interceptVodRequests();
+    interceptWebSocket();
+    observePlayerMounts();
+
+    // Single global handler to close all quality menus on outside click
+    document.addEventListener("click", function () {
+      var menus = document.querySelectorAll(".abr-quality-menu");
+      for (var m = 0; m < menus.length; m++) {
+        menus[m].style.display = "none";
+      }
+    });
+  }
+
+  function parseCachedConfig(raw) {
+    if (!raw) return null;
+    try {
+      var cfg = JSON.parse(raw);
+      if (cfg && cfg.enabled === true && Array.isArray(cfg.tiers) && cfg.tiers.length > 0) {
+        return cfg;
+      }
+    } catch (e) { /* corrupt cache */ }
+    return null;
+  }
+
   function fetchConfig() {
-    return fetch(ABR_CONFIG_URL).then(function (r) {
+    var ctrl = typeof AbortController !== "undefined" ? new AbortController() : null;
+    var timer = ctrl ? setTimeout(function () { ctrl.abort(); }, 10000) : null;
+    return fetch(ABR_CONFIG_URL, ctrl ? { signal: ctrl.signal } : undefined).then(function (r) {
+      if (timer) clearTimeout(timer);
       if (!r.ok) throw new Error("ABR config fetch failed");
       return r.json();
+    }, function (err) {
+      if (timer) clearTimeout(timer);
+      throw err;
+    });
+  }
+
+  function fetchConfigWithRetry(attempts) {
+    return fetchConfig().catch(function (err) {
+      if (attempts <= 1) throw err;
+      return new Promise(function (resolve) { setTimeout(resolve, 3000); }).then(function () {
+        return fetchConfigWithRetry(attempts - 1);
+      });
     });
   }
 

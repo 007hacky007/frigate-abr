@@ -341,3 +341,65 @@ describe("isAutoplayBlocked (show play button)", () => {
     assert.equal(isAutoplayBlocked(null), false);
   });
 });
+
+// --- Cached-config bootstrap (gear must not wait for /abr/config on slow networks) ---
+//
+// These tests load parseCachedConfig straight from the shipped inject.js so
+// they fail until the function exists there and keep failing if it drifts.
+
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+import { dirname, join } from "node:path";
+
+const injectSrc = readFileSync(
+  join(dirname(fileURLToPath(import.meta.url)), "..", "overlay", "web", "abr", "inject.js"),
+  "utf8"
+);
+
+function extractFunction(name) {
+  const re = new RegExp("function " + name + "\\s*\\([^)]*\\)\\s*\\{[\\s\\S]*?\\n  \\}");
+  const m = injectSrc.match(re);
+  assert.ok(m, name + " not found in inject.js");
+  return new Function("return (" + m[0] + ")")();
+}
+
+describe("parseCachedConfig", () => {
+  it("returns the config for a valid enabled cache entry", () => {
+    const parseCachedConfig = extractFunction("parseCachedConfig");
+    const cfg = parseCachedConfig(JSON.stringify({ enabled: true, tiers: [{ name: "480p" }] }));
+    assert.ok(cfg);
+    assert.equal(cfg.tiers[0].name, "480p");
+  });
+
+  it("returns null for corrupt JSON", () => {
+    const parseCachedConfig = extractFunction("parseCachedConfig");
+    assert.equal(parseCachedConfig("{not json"), null);
+  });
+
+  it("returns null when disabled", () => {
+    const parseCachedConfig = extractFunction("parseCachedConfig");
+    assert.equal(parseCachedConfig(JSON.stringify({ enabled: false, tiers: [{ name: "480p" }] })), null);
+  });
+
+  it("returns null when tiers are missing or empty", () => {
+    const parseCachedConfig = extractFunction("parseCachedConfig");
+    assert.equal(parseCachedConfig(JSON.stringify({ enabled: true, tiers: [] })), null);
+    assert.equal(parseCachedConfig(JSON.stringify({ enabled: true })), null);
+    assert.equal(parseCachedConfig(null), null);
+  });
+});
+
+describe("config cache wiring in inject.js", () => {
+  it("activates from the localStorage cache before fetching config", () => {
+    // init() must consult the cache key so the gear and interceptors do not
+    // wait on a slow /abr/config round-trip.
+    assert.ok(injectSrc.includes("frigate-abr-config-cache"), "cache key missing");
+    const initBody = injectSrc.match(/function init\(\)\s*\{[\s\S]*?\n  \}/);
+    assert.ok(initBody, "init() not found");
+    assert.ok(initBody[0].includes("parseCachedConfig"), "init() does not use parseCachedConfig");
+  });
+
+  it("stores a fresh successful config into the cache", () => {
+    assert.ok(/setItem\(\s*CONFIG_CACHE_KEY/.test(injectSrc), "fresh config is never cached");
+  });
+});
