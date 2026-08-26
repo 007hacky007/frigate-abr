@@ -208,3 +208,53 @@ class TestShiftTimestamps:
             self._transcoder(tmp_path).shift_timestamps(str(tmp_path / "missing.ts"), 1.0)
         )
         assert result is None
+
+
+def _first_packet_has_discontinuity_indicator(data: bytes) -> dict[int, bool]:
+    """Map PID -> whether its first TS packet carries the adaptation-field
+    discontinuity_indicator (ISO 13818-1 2.4.3.5)."""
+    seen: dict[int, bool] = {}
+    for off in range(0, len(data) - 187, 188):
+        pk = data[off:off + 188]
+        if pk[0] != 0x47:
+            continue
+        pid = ((pk[1] & 0x1F) << 8) | pk[2]
+        if pid in seen:
+            continue
+        afc = (pk[3] >> 4) & 3
+        seen[pid] = bool(afc & 2) and pk[4] > 0 and bool(pk[5] & 0x80)
+    return seen
+
+
+@needs_ffmpeg
+class TestShiftTimestampsContinuityCounters:
+    """Each cached segment is muxed on its own, so its continuity counters
+    restart at 0. Without an HLS discontinuity tag, demuxers must be told
+    that at the TS level or they flag the boundary packet as corrupt."""
+
+    def _shift(self, tmp_path, name, offset):
+        src = make_ts(tmp_path / f"{name}.ts")
+        t = ABRTranscoder(
+            ffmpeg_path=FFMPEG, hwaccel_preset="default", gpu=0,
+            cache_dir=str(tmp_path / "cache"),
+        )
+        return asyncio.run(t.shift_timestamps(str(src), offset))
+
+    def test_first_packet_of_each_elementary_pid_marks_discontinuity(self, tmp_path):
+        data = self._shift(tmp_path, "seg", 1.0)
+        flags = _first_packet_has_discontinuity_indicator(data)
+        elementary = {pid: v for pid, v in flags.items() if pid >= 0x100 and pid != 0x1FFF}
+        assert elementary, "no elementary stream PIDs found"
+        assert all(elementary.values()), f"indicator missing on PIDs: {[hex(p) for p, v in elementary.items() if not v]}"
+
+    def test_concatenated_segments_have_no_corrupt_packets(self, tmp_path):
+        import subprocess
+        seg0 = self._shift(tmp_path, "a", 0.0)
+        seg1 = self._shift(tmp_path, "b", 1.0)
+        cat = tmp_path / "cat.ts"
+        cat.write_bytes(seg0 + seg1)
+        r = subprocess.run(
+            [FFMPEG, "-hide_banner", "-loglevel", "warning", "-i", str(cat), "-c", "copy", "-f", "null", "-"],
+            capture_output=True, text=True,
+        )
+        assert "corrupt" not in r.stderr.lower(), r.stderr

@@ -301,13 +301,19 @@ class ABRTranscoder:
         cache entry serves every playlist the clip appears in. Shifting them at
         serve time (stream copy, no re-encode, about 40 ms for a 1080p segment)
         gives hls.js one continuous timeline instead of a discontinuity per
-        segment. Returns None if ffmpeg fails.
+        segment. The continuity-counter restart is signalled in the TS
+        adaptation field instead. Returns None if ffmpeg fails.
         """
         cmd = [
             self.ffmpeg_path, "-hide_banner", "-loglevel", "error",
             "-i", src_path,
             "-c", "copy",
             "-output_ts_offset", f"{offset_seconds:.3f}",
+            # Each cached segment was muxed on its own, so its continuity
+            # counters restart at 0. Flag that at the TS level (adaptation
+            # field discontinuity_indicator) so demuxers reading the playlist
+            # as one stream do not report the boundary packet as corrupt.
+            "-mpegts_flags", "initial_discontinuity",
             "-f", "mpegts", "pipe:1",
         ]
         try:
