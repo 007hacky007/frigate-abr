@@ -79,6 +79,8 @@ services:
     # everything else stays exactly the same
 ```
 
+Every release image is built transparently by [GitHub Actions](.github/workflows/build.yml) from the public, auditable code on `master` and cryptographically signed at build time - verify it yourself with `gh attestation verify oci://ghcr.io/007hacky007/frigate-abr:latest --owner 007hacky007`.
+
 **2. (Optional) Mount your own ABR config to customize tiers/cache:**
 
 ```yaml
