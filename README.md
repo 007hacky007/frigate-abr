@@ -19,6 +19,25 @@ Adaptive bitrate streaming overlay for [Frigate NVR](https://github.com/blakebla
 
 These are conservative defaults tuned for security camera footage (mostly static scenes). Configurable in `config.yml`.
 
+### Live bitrate enforcement
+
+Live variants cap the video track at the tier's bitrate (applied to go2rtc's
+encoder via `#raw=-b:v ...`). Two things to know:
+
+- **Audio is copied, not capped.** A tier streams its video bitrate plus the
+  camera's original audio, typically a negligible 30-64 kbit/s AAC.
+- **Invalid bitrate values are never injected.** Anything not matching a plain
+  ffmpeg bitrate (`300k`, `2.5M`, `800000`) is skipped with a warning in the
+  Docker logs and the variant runs without a cap, like older releases did.
+
+Set `live_bitrate: false` in `config.yml` to disable enforcement entirely
+(the escape hatch if a future go2rtc changes how `#raw` args are placed).
+
+go2rtc forgets API-registered streams when it restarts (a crash, or Frigate
+rewriting its config), so the sidecar re-checks every `live_reconcile_interval`
+seconds and re-registers missing variants, which also picks up cameras added
+after startup.
+
 ## Installation
 
 Replace your Frigate image with the frigate-abr image. Everything is baked in.
@@ -127,6 +146,9 @@ cache:
   ttl_hours: 24         # Cached segments expire after this
 
 max_concurrent_transcodes: 2   # Limits simultaneous GPU transcodes
+
+live_bitrate: true             # Cap live variants at the tier bitrate (video only)
+live_reconcile_interval: 30    # Seconds between go2rtc variant re-checks (0 = off)
 
 # Auto-detected from Frigate config. Override if needed:
 # hwaccel: preset-nvidia

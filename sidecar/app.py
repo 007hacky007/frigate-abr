@@ -16,7 +16,7 @@ from fastapi.staticfiles import StaticFiles
 CAMERA_NAME_RE = r"^[a-zA-Z0-9_-]+$"
 
 from .cache import ABRCacheManager
-from .go2rtc_client import setup_live_variants
+from .go2rtc_client import reconcile_live_variants, setup_live_variants
 from .transcoder import ABRTranscoder, QualityTier
 
 logger = logging.getLogger(__name__)
@@ -168,12 +168,36 @@ async def lifespan(app: FastAPI):
     cache_manager.start()
 
     # Register live stream variants in go2rtc
+    live_bitrate = bool(config.get("live_bitrate", True))
     try:
-        await setup_live_variants(http_client, tiers, GO2RTC_API)
+        await setup_live_variants(
+            http_client, tiers, GO2RTC_API, enforce_bitrate=live_bitrate
+        )
     except Exception:
         logger.exception("Failed to setup live ABR variants (go2rtc may not be ready)")
 
+    # go2rtc loses API-registered streams when it restarts (crash, or Frigate
+    # rewriting its config). Reconcile on an interval so variants come back on
+    # their own; also picks up cameras added after startup.
+    reconcile_interval = int(config.get("live_reconcile_interval", 30))
+    reconcile_task = None
+    if reconcile_interval > 0:
+        async def _reconcile_loop():
+            while True:
+                await asyncio.sleep(reconcile_interval)
+                try:
+                    await reconcile_live_variants(
+                        http_client, tiers, GO2RTC_API, enforce_bitrate=live_bitrate
+                    )
+                except Exception:
+                    logger.warning("Live variant reconcile failed; will retry")
+
+        reconcile_task = asyncio.create_task(_reconcile_loop())
+
     yield
+
+    if reconcile_task:
+        reconcile_task.cancel()
 
     # Shutdown
     if cache_manager:
@@ -427,7 +451,9 @@ async def live_setup():
     if not tiers:
         raise HTTPException(503, "ABR not initialized")
 
-    results = await setup_live_variants(http_client, tiers, GO2RTC_API)
+    results = await setup_live_variants(
+        http_client, tiers, GO2RTC_API, enforce_bitrate=bool(config.get("live_bitrate", True))
+    )
     return {"cameras": results}
 
 

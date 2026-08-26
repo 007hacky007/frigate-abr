@@ -7,6 +7,18 @@ ARG ABR_COMMIT=unknown
 ENV ABR_VERSION=${ABR_VERSION}
 ENV ABR_COMMIT=${ABR_COMMIT}
 
+# The live bitrate cap rides on go2rtc's #raw parameter, whose args land
+# after -i (output side) - verified against go2rtc 1.9.10. A go2rtc that
+# placed them input-side would make ffmpeg exit and kill the variants, so
+# refuse to build on an unverified go2rtc version until it is re-checked
+# (see README "Live bitrate enforcement") and added here.
+RUN v="$(/usr/local/go2rtc/bin/go2rtc --version 2>&1 || true)"; \
+    echo "go2rtc: $v"; \
+    case "$v" in \
+      *1.9.10*) ;; \
+      *) echo "ERROR: go2rtc version not verified for #raw arg placement" && exit 1 ;; \
+    esac
+
 # Install Python dependencies at build time
 COPY sidecar/requirements.txt /opt/frigate-abr/sidecar/requirements.txt
 RUN pip3 install --break-system-packages --no-cache-dir -r /opt/frigate-abr/sidecar/requirements.txt
