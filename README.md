@@ -1,7 +1,6 @@
 # frigate-abr
 
 ![Build](https://github.com/007hacky007/frigate-abr/actions/workflows/build.yml/badge.svg)
-![Frigate](https://img.shields.io/badge/Frigate-0.17.2-blue)
 
 Adaptive bitrate streaming overlay for [Frigate NVR](https://github.com/blakeblackshear/frigate). Adds a quality selector to live view and recordings, so remote viewing works on a connection that cannot carry the full camera bitrate. Lower tiers are transcoded only while someone is watching, so nothing extra is stored. Drop-in Docker image, no Frigate source modifications.
 
@@ -31,7 +30,7 @@ NVIDIA: `latest-tensorrt`. AMD: `latest-rocm`. See [Images and tags](#images-and
 
 **3. Open Frigate** and click the gear icon on any player.
 
-That is the whole install. The image is Frigate `0.17.2` with the overlay pre-installed, hardware acceleration is read from your Frigate config, and the defaults (1080p/720p/480p, 10 GB cache) fit most setups. To change the tiers, mount your own config:
+That is the whole install. The image is stock Frigate with the overlay pre-installed, `latest` tracks the current Frigate base and older bases keep their own tags ([Images and tags](#images-and-tags)), hardware acceleration is read from your Frigate config, and the defaults (1080p/720p/480p, 10 GB cache) fit most setups. To change the tiers, mount your own config:
 
 ```yaml
     volumes:
@@ -81,7 +80,7 @@ The built-in feature is the better fit if you want months of low-quality history
 | Live view | Tiers registered in go2rtc automatically, capped at the tier bitrate | Not part of #24009; sub streams go in `live.streams` by hand |
 | Hardware needed | A transcoder: Intel QSV/VAAPI, NVENC, ROCm, or CPU at low tiers (a Pi 5 runs one software transcode) | None beyond the camera's encoder |
 | History after originals expire | None | As long as the low stream's retention allows |
-| Frigate version | 0.17.2 today, image swap only | 0.19 |
+| Frigate version | The pinned base, image swap only ([tags](#images-and-tags)) | 0.19 and newer |
 
 </details>
 
@@ -145,15 +144,30 @@ after startup.
 
 ## Images and tags
 
-Images are built for all Frigate variants:
+`latest` and its variants track the Frigate base this repo currently pins:
 
-| Tag | Base image | Use case |
-|-----|-----------|----------|
+<!-- BEGIN GENERATED TAGS -->
+| Tag | Frigate base image | Use case |
+|-----|--------------------|----------|
 | `latest` | `frigate:0.17.2` | Standard x86_64 (Intel/AMD) |
 | `latest-tensorrt` | `frigate:0.17.2-tensorrt` | NVIDIA GPU with TensorRT |
 | `latest-rocm` | `frigate:0.17.2-rocm` | AMD GPU with ROCm |
+<!-- END GENERATED TAGS -->
 
-Pinned version tags are also available (e.g. `frigate-0.17.2-tensorrt`).
+Every build also publishes a pinned `frigate-<version>` tag, so a Frigate release stays pullable after the base moves on. Published today:
+
+<!-- BEGIN GENERATED VERSIONS -->
+| Frigate | Standard | NVIDIA (TensorRT) | AMD (ROCm) |
+|---------|----------|-------------------|------------|
+| **0.17.2** (current) | `frigate-0.17.2` | `frigate-0.17.2-tensorrt` | `frigate-0.17.2-rocm` |
+| 0.17.1 | `frigate-0.17.1` | `frigate-0.17.1-tensorrt` | `frigate-0.17.1-rocm` |
+<!-- END GENERATED VERSIONS -->
+
+Both tables are generated from `FRIGATE_VERSION` and from the tags that actually exist in the registry (`scripts/sync-version.py`). The [package page](https://github.com/007hacky007/frigate-abr/pkgs/container/frigate-abr) is the live list.
+
+Tags named after a branch (`ha-ingress`, `live-bitrate`, and so on) are CI builds of that branch for testing, amd64 only. Use `latest` or a pinned `frigate-*` tag.
+
+Need a Frigate version that is not listed? Open an issue. When Frigate publishes a new stable release, CI notices within a day and opens a tracking issue by itself; bumping the base is a one-line change to `FRIGATE_VERSION` plus a push, which rebuilds every tag.
 
 Every release image is built transparently by [GitHub Actions](.github/workflows/build.yml) from the public, auditable code on `master` and cryptographically signed at build time - verify it yourself with `gh attestation verify oci://ghcr.io/007hacky007/frigate-abr:latest --owner 007hacky007`.
 
@@ -162,15 +176,16 @@ To build locally for a specific variant:
 ```bash
 git clone https://github.com/007hacky007/frigate-abr.git
 cd frigate-abr
+V=$(cat FRIGATE_VERSION)
 
-# Standard
+# Standard (the pinned base, no build arg needed)
 docker build -t frigate-abr .
 
 # NVIDIA TensorRT
-docker build --build-arg FRIGATE_VERSION=0.17.2-tensorrt -t frigate-abr:tensorrt .
+docker build --build-arg FRIGATE_VERSION=$V-tensorrt -t frigate-abr:tensorrt .
 
-# Rockchip
-docker build --build-arg FRIGATE_VERSION=0.17.2-rk -t frigate-abr:rk .
+# Rockchip, which CI does not publish
+docker build --build-arg FRIGATE_VERSION=$V-rk -t frigate-abr:rk .
 ```
 
 ## Hardware acceleration

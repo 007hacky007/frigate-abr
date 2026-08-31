@@ -1,3 +1,5 @@
+# Default written by scripts/sync-version.py from the FRIGATE_VERSION file.
+# Bump that file and rerun the script rather than editing this line.
 ARG FRIGATE_VERSION=0.17.2
 FROM ghcr.io/blakeblackshear/frigate:${FRIGATE_VERSION}
 

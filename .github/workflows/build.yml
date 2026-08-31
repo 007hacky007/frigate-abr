@@ -9,9 +9,9 @@ on:
   workflow_dispatch:
     inputs:
       frigate_version:
-        description: "Frigate base version (e.g. 0.17.2)"
+        description: "One-off Frigate base version, format x.y.z. Empty uses the FRIGATE_VERSION file."
         required: false
-        default: "0.17.2"
+        default: ""
       all_variants:
         description: "Build all variants (tensorrt, rocm)"
         type: boolean
@@ -26,9 +26,22 @@ concurrency:
 env:
   REGISTRY: ghcr.io
   IMAGE_NAME: ${{ github.repository }}
-  FRIGATE_BASE_VERSION: "0.17.2"
 
 jobs:
+  version-sync:
+    # Fails when Dockerfile or README no longer match FRIGATE_VERSION, so a bump
+    # cannot land half-applied. Cheap enough to run on every push.
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Check generated version references
+        run: python3 scripts/sync-version.py --check
+
   build-standard:
     runs-on: ubuntu-latest
     permissions:
@@ -45,7 +58,9 @@ jobs:
         env:
           INPUT_VERSION: ${{ inputs.frigate_version }}
         run: |
-          echo "FRIGATE_VERSION=${INPUT_VERSION:-$FRIGATE_BASE_VERSION}" >> "$GITHUB_ENV"
+          # FRIGATE_VERSION at the repo root is the single source for the pinned
+          # base; a workflow_dispatch input overrides it for one-off builds.
+          echo "FRIGATE_VERSION=${INPUT_VERSION:-$(cat FRIGATE_VERSION)}" >> "$GITHUB_ENV"
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v4
@@ -116,7 +131,7 @@ jobs:
         env:
           INPUT_VERSION: ${{ inputs.frigate_version }}
         run: |
-          BASE="${INPUT_VERSION:-$FRIGATE_BASE_VERSION}"
+          BASE="${INPUT_VERSION:-$(cat FRIGATE_VERSION)}"
           echo "FRIGATE_VERSION=${BASE}${{ matrix.variant.suffix }}" >> "$GITHUB_ENV"
 
       - name: Set up Docker Buildx
@@ -175,8 +190,8 @@ jobs:
       - name: Check for new Frigate release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          CURRENT_VERSION: "0.17.2"
         run: |
+          CURRENT_VERSION=$(cat FRIGATE_VERSION)
           LATEST=$(gh api repos/blakeblackshear/frigate/releases/latest --jq .tag_name | sed 's/^v//')
 
           echo "Current pinned: $CURRENT_VERSION"
@@ -192,10 +207,11 @@ jobs:
                 --body "A new Frigate stable release **$LATEST** is available. Current pinned version is **$CURRENT_VERSION**.
 
           To update:
-          1. Change FRIGATE_BASE_VERSION in .github/workflows/build.yml
-          2. Test the build
-          3. Push to master
+          1. \`echo $LATEST > FRIGATE_VERSION\`
+          2. \`python3 scripts/sync-version.py\` (rewrites the Dockerfile default and the README tables)
+          3. Test the build
+          4. Push to master, which rebuilds and retags every variant
 
-          Or trigger a manual build: Actions -> Build and Push -> Run workflow -> set version to $LATEST"
+          Or trigger a one-off build without moving the pin: Actions -> Build and Push -> Run workflow -> set version to $LATEST"
             fi
           fi
