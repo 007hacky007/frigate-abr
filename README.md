@@ -2,17 +2,15 @@
 
 ![Build](https://github.com/007hacky007/frigate-abr/actions/workflows/build.yml/badge.svg)
 
-Adaptive bitrate streaming overlay for [Frigate NVR](https://github.com/blakeblackshear/frigate). Adds a quality selector to live view and recordings, so remote viewing works on a connection that cannot carry the full camera bitrate. Lower tiers are transcoded only while someone is watching, so nothing extra is stored. Drop-in Docker image, no Frigate source modifications.
+Adaptive bitrate streaming overlay for [Frigate NVR](https://github.com/blakeblackshear/frigate). Adds a quality selector to live view and recordings, so remote viewing works on a connection that cannot carry the full camera bitrate. Lower tiers are transcoded only while someone is watching, so nothing extra is stored. Drop-in Docker image, **no Frigate source modifications**.
 
-Key capabilities:
+Key features:
 
-- A quality selector on every video player: Original, 1080p, 720p, 480p, or [any tiers you define](#quality-tiers).
-- [Live view](#how-it-works): lower-resolution variants registered in go2rtc, transcoded only while a viewer is connected.
-- [Recordings](#hardware-acceleration): 10-second segments transcoded on demand with GPU acceleration, cached after first play.
+- A quality selector on every video player: Original, 1080p, 720p, 480p, or [any tiers you define](#quality-tiers-defaults).
+- Live view: lower-resolution variants registered in go2rtc, transcoded only while a viewer is connected.
+- Recordings: 10-second segments transcoded on demand with GPU acceleration, cached after first play.
 
 ![frigate-abr quality selector](demo.gif)
-
-<sub>Demo instance with a synthetic camera feed rendered from a CC0 photo. Switching to 480p cuts the stream from 8.6 to 0.6 Mbit/s.</sub>
 
 ## Installation
 
@@ -34,7 +32,7 @@ That is the whole install. The image is stock Frigate with the overlay pre-insta
 
 ```yaml
     volumes:
-      - ./config-abr.yml:/opt/frigate-abr/config.yml:ro
+      - /path/to/your/config-abr.yml:/opt/frigate-abr/config.yml:ro # see example config-abr.yml below
 ```
 
 ```yaml
@@ -51,7 +49,7 @@ tiers:
     bitrate: "500k"
 ```
 
-Every other setting has a default; see the [configuration reference](#configuration-reference).
+See the [configuration reference](#configuration-reference) for all parameters.
 
 ## Why this exists
 
@@ -60,31 +58,30 @@ Frigate 0.19 adds its own quality switching for recordings ([PR #24009](https://
 frigate-abr transcodes the original recording on demand instead. Advantages over the built-in approach:
 
 - **No extra disk space.** Nothing is recorded twice. Segments are transcoded when someone presses play and kept in a bounded cache (10 GB, 24 h by default), instead of a second stream written to disk around the clock.
-- **Custom tiers, independent of the camera.** Frigate's Low quality is whatever sub stream the camera provides, and many cameras (Reolink, for one) offer a single 480p sub stream. frigate-abr tiers are defined in config, as many as you want, from any camera: 1080p, 720p and 480p by default, 360p for satellite links.
+- **Custom tiers, independent of the camera.** Frigate's Low quality is whatever sub stream the camera provides, and many cameras (Reolink, for one) offer a single sub stream. frigate-abr tiers are defined in config, as many as you want, from any camera: 1080p, 720p and 480p by default.
 - **Changes apply instantly, to all footage.** Tiers are cut from the original recording, so adding or adjusting a tier covers everything already on disk. A recorded sub stream exists only for footage captured after you set it up, at the settings of that time.
 - **Plays in every browser.** Every tier is H.264, which every browser decodes. A recorded sub stream plays only if the browser can decode its codec, which rules out HEVC sub streams on browsers without HEVC support.
 
-The built-in feature is the better fit if you want months of low-quality history after the originals expire, or your host has no transcoder at all.
-
 <details>
-<summary>Side-by-side comparison with Frigate 0.19</summary>
+<summary>Side-by-side comparison of frigate-abr versus the official Frigate solution</summary>
 
 | | frigate-abr | Frigate 0.19 `record_sub` |
 |---|---|---|
-| Disk space | None extra; segments are transcoded on play and kept in a bounded cache (10 GB, 24 h by default) | Second stream recorded around the clock, with its own retention |
-| Quality levels | Any number, defined in config, independent of the camera (defaults 1080p/720p/480p, add 360p for satellite) | Two: Original and Low. Low is the camera's sub stream, on many cameras a single 480p stream |
+| Disk space | None extra; segments are transcoded on play and kept in a bounded cache (10 GB, 24 h by default) | Second stream recorded around the clock |
+| Quality levels | Any number, defined in config, independent of the camera (defaults 1080p/720p/480p) | Usually two: Original and sub stream |
 | Changing tiers | Applies instantly to all footage on disk | Only footage recorded after the change; older recordings keep the sub stream recorded at the time, or none |
-| Browser support | Every tier is H.264, which every browser decodes | Low plays only if the browser decodes the sub stream's codec; an HEVC sub stream needs HEVC support |
-| Cameras without a usable sub stream | Transcode runs only while someone watches | Continuous go2rtc transcode of the main stream, one encode per camera |
-| Switching qualities | Tiers share source, audio and codec; the playlist is one continuous timeline | Streams with different codecs or audio parameters get a decoder reset at each switch; a sub stream without audio makes mixed ranges play silent |
-| Live view | Tiers registered in go2rtc automatically, capped at the tier bitrate | Not part of #24009; sub streams go in `live.streams` by hand |
+| Browser support | Every tier is H.264, which every browser decodes | Low plays only if the browser decodes the sub stream's codec |
+| Cameras without a usable sub stream | Transcode runs only while someone watches | Continuous go2rtc transcode of the main stream, constant GPU usage |
+| Audio support | Copied over from main stream | A sub stream without audio means silent playback |
+| Live view | Tiers registered in go2rtc automatically, capped at the tier bitrate | Not part of [PR #24009](https://github.com/blakeblackshear/frigate/pull/24009) |
 | Hardware needed | A transcoder: Intel QSV/VAAPI, NVENC, ROCm, or CPU at low tiers (a Pi 5 runs one software transcode) | None beyond the camera's encoder |
-| History after originals expire | None | As long as the low stream's retention allows |
-| Frigate version | The pinned base, image swap only ([tags](#images-and-tags)) | 0.19 and newer |
+| Frigate version | 0.17.1+<sup>\*</sup> | 0.19+ |
+
+<sub>\* lowest verified with Docker images built and ready, but lower versions are most likely compatible too.</sub>
 
 </details>
 
-## Quality tiers
+## Quality tiers (defaults)
 
 | Tier | Resolution | Bitrate | Use case |
 |------|-----------|---------|----------|
@@ -123,7 +120,8 @@ quality cost, mostly during motion; since live streams started honoring the
 configured bitrate, lean overrides that previously only affected recordings
 now shape live quality too.
 
-### Live bitrate enforcement
+<details>
+<summary>Live bitrate enforcement</summary>
 
 Live variants cap the video track at the tier's bitrate (applied to go2rtc's
 encoder via `#raw=-b:v ...`). Two things to know:
@@ -141,6 +139,7 @@ go2rtc forgets API-registered streams when it restarts (a crash, or Frigate
 rewriting its config), so the sidecar re-checks every `live_reconcile_interval`
 seconds and re-registers missing variants, which also picks up cameras added
 after startup.
+</details>
 
 ## Images and tags
 
@@ -162,6 +161,9 @@ Every build also publishes a pinned `frigate-<version>` tag, so a Frigate releas
 | **0.17.2** (current) | `frigate-0.17.2` | `frigate-0.17.2-tensorrt` | `frigate-0.17.2-rocm` |
 | 0.17.1 | `frigate-0.17.1` | `frigate-0.17.1-tensorrt` | `frigate-0.17.1-rocm` |
 <!-- END GENERATED VERSIONS -->
+
+<details>
+<summary>How tags are generated and signed, and how to build your own</summary>
 
 Both tables are generated from `FRIGATE_VERSION` and from the tags that actually exist in the registry (`scripts/sync-version.py`). The [package page](https://github.com/007hacky007/frigate-abr/pkgs/container/frigate-abr) is the live list.
 
@@ -187,6 +189,7 @@ docker build --build-arg FRIGATE_VERSION=$V-tensorrt -t frigate-abr:tensorrt .
 # Rockchip, which CI does not publish
 docker build --build-arg FRIGATE_VERSION=$V-rk -t frigate-abr:rk .
 ```
+</details>
 
 ## Hardware acceleration
 
@@ -250,7 +253,7 @@ docker compose logs frigate | grep "\[ABR\]"
 curl http://localhost:5000/abr/health
 
 # Check transcoding works
-curl http://localhost:5000/abr/debug/transcode?camera=YOUR_CAMERA&quality=480p
+curl "http://localhost:5000/abr/debug/transcode?camera=YOUR_CAMERA&quality=480p"
 ```
 
 ## API endpoints
@@ -275,7 +278,7 @@ curl http://localhost:5000/abr/debug/transcode?camera=YOUR_CAMERA&quality=480p
 |---------|-----|
 | No gear icon on video players | Check `docker compose logs frigate \| grep ABR` for patch errors. |
 | Grey/black screen on ABR quality (live) | **Firefox autoplay restriction.** Click the lock icon in address bar -> Permissions -> Autoplay -> Allow Audio and Video. Chrome works without this. |
-| Transcoding fails | Run `curl localhost:5000/abr/debug/transcode?camera=YOUR_CAMERA&quality=480p` and check `ffmpeg_exit_code` and `ffmpeg_stderr`. |
+| Transcoding fails | Run `curl "localhost:5000/abr/debug/transcode?camera=YOUR_CAMERA&quality=480p"` and check `ffmpeg_exit_code` and `ffmpeg_stderr`. |
 | Cache growing too large | Lower `cache.max_size_gb` or `cache.ttl_hours` in `config.yml`. |
 
 ## Frigate update compatibility
