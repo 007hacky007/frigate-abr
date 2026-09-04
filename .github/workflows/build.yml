@@ -42,7 +42,80 @@ jobs:
       - name: Check generated version references
         run: python3 scripts/sync-version.py --check
 
+  changes:
+    # A README or demo.webp push must not rebuild and retag the published
+    # images. Decides once whether anything the image is actually built from
+    # moved; the build jobs gate on the result. version-sync above stays
+    # unconditional, since the README is one of the files it validates.
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      image: ${{ steps.filter.outputs.image }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Detect image-relevant changes
+        id: filter
+        env:
+          EVENT: ${{ github.event_name }}
+          BEFORE: ${{ github.event.before }}
+          PR_BASE: ${{ github.event.pull_request.base.sha }}
+        run: |
+          set -uo pipefail
+
+          # Everything the Dockerfile COPYs, the pinned base version, and the
+          # workflow itself so build changes still get exercised.
+          PATTERN='^(Dockerfile|FRIGATE_VERSION|config\.yml|sidecar/|overlay/|\.github/workflows/)'
+
+          # Fail open. A job that errors here would take the build jobs down
+          # with it (an `if:` without a status function still implies success()
+          # on `needs`), which on a release tag would mean no image and no
+          # provenance attestation. So every path below exits 0, and anything
+          # undecidable resolves to "build".
+          decide() {
+            echo "image=$1" >> "$GITHUB_OUTPUT"
+            echo "==> image rebuild needed: $1"
+            exit 0
+          }
+
+          if [ "$EVENT" = "pull_request" ]; then
+            BASE="${PR_BASE:-}"
+          else
+            BASE="${BEFORE:-}"
+          fi
+
+          # New branch, force push, or a base that is no longer reachable.
+          if [ -z "$BASE" ] \
+             || [ "$BASE" = "0000000000000000000000000000000000000000" ] \
+             || ! git cat-file -e "${BASE}^{commit}" 2>/dev/null; then
+            echo "No usable base commit to diff against."
+            decide true
+          fi
+
+          if ! git diff --name-only "$BASE" "$GITHUB_SHA" > /tmp/changed.txt; then
+            echo "git diff failed."
+            decide true
+          fi
+
+          echo "Changed files:"
+          cat /tmp/changed.txt
+
+          if grep -qE "$PATTERN" /tmp/changed.txt; then
+            decide true
+          fi
+          decide false
+
   build-standard:
+    needs: changes
+    if: >-
+      needs.changes.outputs.image == 'true'
+      || startsWith(github.ref, 'refs/tags/v')
+      || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -110,7 +183,12 @@ jobs:
 
   build-variants:
     runs-on: ubuntu-latest
-    if: startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && inputs.all_variants) || (github.event_name == 'push' && github.ref == 'refs/heads/master')
+    needs: changes
+    if: >-
+      startsWith(github.ref, 'refs/tags/v')
+      || (github.event_name == 'workflow_dispatch' && inputs.all_variants)
+      || (github.event_name == 'push' && github.ref == 'refs/heads/master'
+          && needs.changes.outputs.image == 'true')
     permissions:
       contents: read
       packages: write
