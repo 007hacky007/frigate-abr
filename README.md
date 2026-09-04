@@ -10,7 +10,7 @@ Key features:
 - Live view: lower-resolution variants registered in go2rtc, transcoded only while a viewer is connected.
 - Recordings: 10-second segments transcoded on demand with GPU acceleration, cached after first play.
 
-![frigate-abr quality selector](demo.gif)
+![frigate-abr quality selector](demo.webp)
 
 ## Installation
 
