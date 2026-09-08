@@ -5,6 +5,7 @@ Run with: python3 -m pytest tests/test_app.py -v
 
 import asyncio
 import sys
+from unittest import mock
 
 import pytest
 from pathlib import Path
@@ -114,3 +115,122 @@ class TestVodSegmentTimestamps:
         out.write_bytes(resp.body if hasattr(resp, "body") else Path(resp.path).read_bytes())
 
         assert first_pts(out) == pytest.approx(first_pts(src) + 2.5, abs=0.001)
+
+
+class TestFfmpegPathDetection:
+    """The sidecar must transcode with the same ffmpeg build Frigate uses.
+
+    Frigate advertises its bundled default in DEFAULT_FFMPEG_VERSION. That
+    default moved from 7.0 to 8.0 on x86_64 in Frigate 0.18 (and to "rpi" on
+    arm64) while 7.0 stayed bundled, so a hard-coded probe list keeps working
+    yet silently pins the sidecar to the older build.
+    """
+
+    def _detect(self, monkeypatch, present, env=None, config=None, frigate_cfg=None):
+        present = set(present)
+        monkeypatch.setattr(app_module.os.path, "exists", lambda p: p in present)
+        if env is None:
+            monkeypatch.delenv("DEFAULT_FFMPEG_VERSION", raising=False)
+        else:
+            monkeypatch.setenv("DEFAULT_FFMPEG_VERSION", env)
+        if frigate_cfg is not None:
+            monkeypatch.setattr(app_module.yaml, "safe_load", lambda f: frigate_cfg)
+        with mock.patch("builtins.open", mock.mock_open(read_data="")):
+            return app_module.detect_ffmpeg_path(config or {})
+
+    def test_follows_bundled_default_over_older_bundled_version(self, monkeypatch):
+        """A 0.18 image bundles 7.0 alongside its 8.0 default; take the 8.0."""
+        assert self._detect(
+            monkeypatch,
+            present=[
+                "/usr/lib/ffmpeg/8.0/bin/ffmpeg",
+                "/usr/lib/ffmpeg/7.0/bin/ffmpeg",
+                "/usr/lib/ffmpeg/5.0/bin/ffmpeg",
+            ],
+            env="8.0",
+        ) == "/usr/lib/ffmpeg/8.0/bin/ffmpeg"
+
+    def test_follows_non_numeric_bundled_default(self, monkeypatch):
+        """arm64 images name their default build "rpi" rather than a version."""
+        assert self._detect(
+            monkeypatch,
+            present=[
+                "/usr/lib/ffmpeg/rpi/bin/ffmpeg",
+                "/usr/lib/ffmpeg/8.0/bin/ffmpeg",
+                "/usr/lib/ffmpeg/7.0/bin/ffmpeg",
+            ],
+            env="rpi",
+        ) == "/usr/lib/ffmpeg/rpi/bin/ffmpeg"
+
+    def test_older_base_still_resolves_to_its_default(self, monkeypatch):
+        assert self._detect(
+            monkeypatch,
+            present=[
+                "/usr/lib/ffmpeg/7.0/bin/ffmpeg",
+                "/usr/lib/ffmpeg/5.0/bin/ffmpeg",
+            ],
+            env="7.0",
+        ) == "/usr/lib/ffmpeg/7.0/bin/ffmpeg"
+
+    def test_probe_list_covers_ffmpeg_8_without_the_env_var(self, monkeypatch):
+        """Bases that advertise nothing must still not skip past ffmpeg 8."""
+        assert self._detect(
+            monkeypatch,
+            present=[
+                "/usr/lib/ffmpeg/8.0/bin/ffmpeg",
+                "/usr/lib/ffmpeg/7.0/bin/ffmpeg",
+            ],
+            env=None,
+        ) == "/usr/lib/ffmpeg/8.0/bin/ffmpeg"
+
+    def test_unusable_bundled_default_falls_through_to_probe(self, monkeypatch):
+        assert self._detect(
+            monkeypatch,
+            present=["/usr/lib/ffmpeg/7.0/bin/ffmpeg"],
+            env="9.9",
+        ) == "/usr/lib/ffmpeg/7.0/bin/ffmpeg"
+
+    def test_frigate_config_version_wins_over_bundled_default(self, monkeypatch):
+        assert self._detect(
+            monkeypatch,
+            present=[
+                "/config/config.yml",
+                "/usr/lib/ffmpeg/8.0/bin/ffmpeg",
+                "/usr/lib/ffmpeg/7.0/bin/ffmpeg",
+            ],
+            env="8.0",
+            frigate_cfg={"ffmpeg": {"path": "7.0"}},
+        ) == "/usr/lib/ffmpeg/7.0/bin/ffmpeg"
+
+    def test_frigate_config_version_no_longer_bundled_falls_back(self, monkeypatch):
+        """Frigate drops bundled ffmpeg versions between releases (5.0 goes in
+        0.19) and falls back to its default for an alias it no longer ships.
+        Returning a path that does not exist would fail every transcode."""
+        assert self._detect(
+            monkeypatch,
+            present=[
+                "/config/config.yml",
+                "/usr/lib/ffmpeg/8.0/bin/ffmpeg",
+            ],
+            env="8.0",
+            frigate_cfg={"ffmpeg": {"path": "5.0"}},
+        ) == "/usr/lib/ffmpeg/8.0/bin/ffmpeg"
+
+    def test_custom_absolute_path_is_untouched(self, monkeypatch):
+        assert self._detect(
+            monkeypatch,
+            present=["/config/config.yml", "/usr/lib/ffmpeg/8.0/bin/ffmpeg"],
+            env="8.0",
+            frigate_cfg={"ffmpeg": {"path": "/opt/custom/ffmpeg"}},
+        ) == "/opt/custom/ffmpeg"
+
+    def test_explicit_sidecar_config_wins(self, monkeypatch):
+        assert self._detect(
+            monkeypatch,
+            present=["/usr/lib/ffmpeg/8.0/bin/ffmpeg"],
+            env="8.0",
+            config={"ffmpeg_path": "/somewhere/ffmpeg"},
+        ) == "/somewhere/ffmpeg"
+
+    def test_last_resort_when_nothing_is_bundled(self, monkeypatch):
+        assert self._detect(monkeypatch, present=[], env=None) == "/usr/bin/ffmpeg"

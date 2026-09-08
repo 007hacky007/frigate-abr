@@ -53,8 +53,27 @@ def parse_tiers(config: dict) -> list[QualityTier]:
     ]
 
 
+# Probed newest-first, and only when the base image does not advertise its
+# own default (see detect_ffmpeg_path). Frigate has shipped
+# DEFAULT_FFMPEG_VERSION since 0.17, so this list is a safety net rather than
+# the normal path.
+FFMPEG_VERSION_FALLBACKS = ["8.0", "7.0", "7.1", "6.1", "6.0", "rpi"]
+
+
 def detect_ffmpeg_path(config: dict) -> str:
-    """Determine ffmpeg binary path."""
+    """Determine ffmpeg binary path.
+
+    Preference order: an explicit ``ffmpeg_path`` in our config, then the
+    version Frigate itself is configured to use, then the base image's own
+    bundled default, then a probe of known install directories.
+
+    The bundled default is read from ``DEFAULT_FFMPEG_VERSION``, which Frigate
+    sets in the image environment. Following it keeps the sidecar on the same
+    ffmpeg build Frigate uses instead of one this file happens to know about:
+    0.17 defaulted to 7.0, 0.18 moved to 8.0 on x86_64 and to "rpi" on arm64
+    while keeping 7.0 bundled, so a hard-coded list silently pins the sidecar
+    to an older build across a base upgrade.
+    """
     if "ffmpeg_path" in config:
         return config["ffmpeg_path"]
     # Try reading from Frigate config
@@ -67,11 +86,27 @@ def detect_ffmpeg_path(config: dict) -> str:
                 if ffpath != "default":
                     if "/" in ffpath:
                         return ffpath
-                    return f"/usr/lib/ffmpeg/{ffpath}/bin/ffmpeg"
+                    # A bare version alias that this base no longer bundles
+                    # falls through to the default below, matching how Frigate
+                    # resolves the same setting.
+                    candidate = f"/usr/lib/ffmpeg/{ffpath}/bin/ffmpeg"
+                    if os.path.exists(candidate):
+                        return candidate
+                    logger.warning(
+                        "Frigate ffmpeg path %r is not bundled in this image; "
+                        "falling back to the image default",
+                        ffpath,
+                    )
             except Exception:
                 pass
+    # Follow whatever the base image ships as its default.
+    bundled = os.environ.get("DEFAULT_FFMPEG_VERSION", "").strip()
+    if bundled:
+        candidate = f"/usr/lib/ffmpeg/{bundled}/bin/ffmpeg"
+        if os.path.exists(candidate):
+            return candidate
     # Auto-detect: find the first available ffmpeg binary
-    for version in ["7.0", "7.1", "6.1", "6.0"]:
+    for version in FFMPEG_VERSION_FALLBACKS:
         candidate = f"/usr/lib/ffmpeg/{version}/bin/ffmpeg"
         if os.path.exists(candidate):
             return candidate
