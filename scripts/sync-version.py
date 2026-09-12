@@ -16,6 +16,7 @@ syncing. This script rewrites the two places that cannot read a file:
 The published-versions table is built from the tags that actually exist in the
 registry, so it lists real pullable images rather than a hand-kept list. That
 lookup needs network access; without it the existing table is left untouched.
+The pinned version's own row is the exception - see published_versions_table.
 
 Run with --check to verify without writing (CI does this; exit 1 means the tree
 is out of sync with FRIGATE_VERSION).
@@ -100,7 +101,15 @@ def published_versions_table(version: str, tags: list[str]) -> str:
         match = TAG_RE.match(tag)
         if match:
             published.setdefault(match.group(1), set()).add(match.group(2) or "")
-    published.setdefault(version, set()).add("")
+    # The pinned version's row is written as fully published instead of being
+    # read back from the registry. A master push builds every variant at once,
+    # so those tags show up minutes after the bump commit - but --check runs on
+    # the bump itself, when none of them exist yet. Taking the registry at its
+    # word here would put "not built" in the release commit's README and then
+    # leave it stale once the build lands, failing --check on the next
+    # unrelated push. A variant that genuinely fails to build is a red run to
+    # fix, not a row to describe.
+    published[version] = {tag_suffix for tag_suffix, _, _ in VARIANTS}
 
     rows = [
         "| Frigate | Standard | NVIDIA (TensorRT) | AMD (ROCm) |",
