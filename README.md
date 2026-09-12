@@ -148,9 +148,9 @@ after startup.
 <!-- BEGIN GENERATED TAGS -->
 | Tag | Frigate base image | Use case |
 |-----|--------------------|----------|
-| `latest` | `frigate:0.17.2` | Standard x86_64 (Intel/AMD) |
-| `latest-tensorrt` | `frigate:0.17.2-tensorrt` | NVIDIA GPU with TensorRT |
-| `latest-rocm` | `frigate:0.17.2-rocm` | AMD GPU with ROCm |
+| `latest` | `frigate:0.18.0` | Standard x86_64 (Intel/AMD) |
+| `latest-tensorrt` | `frigate:0.18.0-tensorrt` | NVIDIA GPU with TensorRT |
+| `latest-rocm` | `frigate:0.18.0-rocm` | AMD GPU with ROCm |
 <!-- END GENERATED TAGS -->
 
 Every build also publishes a pinned `frigate-<version>` tag, so a Frigate release stays pullable after the base moves on. Published today:
@@ -158,7 +158,8 @@ Every build also publishes a pinned `frigate-<version>` tag, so a Frigate releas
 <!-- BEGIN GENERATED VERSIONS -->
 | Frigate | Standard | NVIDIA (TensorRT) | AMD (ROCm) |
 |---------|----------|-------------------|------------|
-| **0.17.2** (current) | `frigate-0.17.2` | `frigate-0.17.2-tensorrt` | `frigate-0.17.2-rocm` |
+| **0.18.0** (current) | `frigate-0.18.0` | not built | not built |
+| 0.17.2 | `frigate-0.17.2` | `frigate-0.17.2-tensorrt` | `frigate-0.17.2-rocm` |
 | 0.17.1 | `frigate-0.17.1` | `frigate-0.17.1-tensorrt` | `frigate-0.17.1-rocm` |
 <!-- END GENERATED VERSIONS -->
 
