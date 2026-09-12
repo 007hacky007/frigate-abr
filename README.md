@@ -158,7 +158,7 @@ Every build also publishes a pinned `frigate-<version>` tag, so a Frigate releas
 <!-- BEGIN GENERATED VERSIONS -->
 | Frigate | Standard | NVIDIA (TensorRT) | AMD (ROCm) |
 |---------|----------|-------------------|------------|
-| **0.18.0** (current) | `frigate-0.18.0` | not built | not built |
+| **0.18.0** (current) | `frigate-0.18.0` | `frigate-0.18.0-tensorrt` | `frigate-0.18.0-rocm` |
 | 0.17.2 | `frigate-0.17.2` | `frigate-0.17.2-tensorrt` | `frigate-0.17.2-rocm` |
 | 0.17.1 | `frigate-0.17.1` | `frigate-0.17.1-tensorrt` | `frigate-0.17.1-rocm` |
 <!-- END GENERATED VERSIONS -->
