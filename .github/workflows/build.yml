@@ -151,9 +151,17 @@ jobs:
         uses: docker/metadata-action@v6
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          # latest is handed out by the master rule below and nowhere else.
+          # metadata-action's default latest=auto would otherwise bolt it onto
+          # any type=ref,event=tag match, moving it on every v tag push.
+          flavor: latest=false
+          # master -> latest and the pinned frigate-x.y.z tag
+          # v tag  -> the release tag itself (v1.2.3); latest stays where it is
+          # branch -> the branch name, an amd64 test build
           tags: |
             type=raw,value=latest,enable=${{ github.ref == 'refs/heads/master' }}
             type=raw,value=frigate-${{ env.FRIGATE_VERSION }},enable=${{ github.ref == 'refs/heads/master' }}
+            type=ref,event=tag
             type=ref,event=branch,enable=${{ github.ref != 'refs/heads/master' }}
             type=ref,event=pr
 
@@ -227,9 +235,14 @@ jobs:
         uses: docker/metadata-action@v6
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          # Same three cases as build-standard. Ungated, the latest-* tags would
+          # follow a v tag or a dispatched branch build onto an image that was
+          # never released from master; gated on master alone, those refs would
+          # resolve to no tags at all and the push would fail.
           tags: |
-            type=raw,value=latest${{ matrix.variant.suffix }}
-            type=raw,value=frigate-${{ env.FRIGATE_VERSION }}
+            type=raw,value=latest${{ matrix.variant.suffix }},enable=${{ github.ref == 'refs/heads/master' }}
+            type=raw,value=frigate-${{ env.FRIGATE_VERSION }},enable=${{ github.ref == 'refs/heads/master' }}
+            type=raw,value=${{ github.ref_name }}${{ matrix.variant.suffix }},enable=${{ github.ref != 'refs/heads/master' }}
 
       - name: Build and push
         id: push
