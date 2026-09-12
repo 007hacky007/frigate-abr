@@ -168,7 +168,7 @@ Every build also publishes a pinned `frigate-<version>` tag, so a Frigate releas
 
 Both tables are generated from `FRIGATE_VERSION` and from the tags that actually exist in the registry (`scripts/sync-version.py`). The [package page](https://github.com/007hacky007/frigate-abr/pkgs/container/frigate-abr) is the live list.
 
-Tags named after a branch (`ha-ingress`, `live-bitrate`, and so on) are CI builds of that branch for testing, amd64 only. Use `latest` or a pinned `frigate-*` tag.
+A tag named after a branch is a CI build of that branch for testing, amd64 only, and gets deleted once the branch lands. Use `latest` or a pinned `frigate-*` tag.
 
 Need a Frigate version that is not listed? Open an issue. When Frigate publishes a new stable release, CI notices within a day and opens a tracking issue by itself; bumping the base is a one-line change to `FRIGATE_VERSION` plus a push, which rebuilds every tag.
 
