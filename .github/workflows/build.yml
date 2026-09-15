@@ -267,6 +267,35 @@ jobs:
           subject-digest: ${{ steps.push.outputs.digest }}
           push-to-registry: true
 
+  release:
+    # Publishes the GitHub release for a v tag once its images are in the
+    # registry, with notes taken straight from CHANGELOG.md so the two cannot
+    # drift. A version with no changelog entries fails here rather than being
+    # released with empty notes.
+    runs-on: ubuntu-latest
+    needs: [build-standard, build-variants]
+    if: startsWith(github.ref, 'refs/tags/v')
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Build release notes from the changelog
+        run: |
+          python3 scripts/changelog-section.py "${GITHUB_REF_NAME#v}" > release-notes.md
+          cat release-notes.md
+
+      - name: Publish the release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" \
+            --title "$GITHUB_REF_NAME" \
+            --notes-file release-notes.md \
+            --verify-tag
+
   check-frigate-release:
     runs-on: ubuntu-latest
     if: github.event_name == 'push' && github.ref == 'refs/heads/master'

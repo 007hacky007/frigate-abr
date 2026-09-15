@@ -16,6 +16,16 @@ expires them, which is how a fixed bug appears to survive its own fix.
 
 Segments are cheap to recreate (a second or two each), so bump when in doubt.
 
+## User-visible changes go in the changelog
+
+Anything a user could notice - a fix, a new config key, changed behaviour - gets an
+entry under `## [Unreleased]` in `CHANGELOG.md`, in the same commit as the change.
+
+A release is cut by tagging `vX.Y.Z` on master. CI then builds the release images
+and publishes the GitHub release with that version's changelog section as its
+notes, so the notes cannot drift from the changelog. A version with no entries
+fails the release job on purpose.
+
 ## Everything degrades gracefully
 
 If the sidecar is unreachable or ABR is disabled, Frigate must work normally:
