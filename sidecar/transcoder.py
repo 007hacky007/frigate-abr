@@ -22,71 +22,81 @@ class QualityTier:
 # ffmpeg command templates per hwaccel backend.
 # {gpu} is the GPU device index/path.
 # {w}, {h}, {bitrate}, {maxrate}, {bufsize} are tier parameters.
+#
+# Every encoder runs with -bf 0. Frigate's recordings are variable frame rate -
+# a camera that nominally sends 16 fps drifts by a few hundred ms between
+# frames - and an encoder that reorders frames derives each B-frame's DTS from
+# a constant frame duration. On a long frame interval that DTS lands before the
+# previous one, and the mpegts muxer bumps the non-monotonic value to prev + 1
+# tick (11 us). Safari's decoder stops at the first run of those samples: the
+# picture freezes while audio keeps playing. Chrome decodes them anyway, so the
+# breakage is WebKit-only. Without reordering, DTS is just PTS and the problem
+# cannot arise.
 HWACCEL_TEMPLATES = {
     "preset-nvidia": {
         "decode": "-hwaccel cuda -hwaccel_device {gpu} -hwaccel_output_format cuda",
         "scale": "-vf scale_cuda=w={w}:h={h}:force_original_aspect_ratio=decrease:force_divisible_by=2",
-        "encode": "-c:v h264_nvenc -preset:v p4 -profile:v high -b:v {bitrate} -maxrate {maxrate} -bufsize {bufsize} -g 50",
+        "encode": "-c:v h264_nvenc -bf 0 -preset:v p4 -profile:v high -b:v {bitrate} -maxrate {maxrate} -bufsize {bufsize} -g 50",
     },
     "preset-nvidia-h264": {
         "decode": "-hwaccel cuda -hwaccel_device {gpu} -hwaccel_output_format cuda",
         "scale": "-vf scale_cuda=w={w}:h={h}:force_original_aspect_ratio=decrease:force_divisible_by=2",
-        "encode": "-c:v h264_nvenc -preset:v p4 -profile:v high -b:v {bitrate} -maxrate {maxrate} -bufsize {bufsize} -g 50",
+        "encode": "-c:v h264_nvenc -bf 0 -preset:v p4 -profile:v high -b:v {bitrate} -maxrate {maxrate} -bufsize {bufsize} -g 50",
     },
     "preset-nvidia-h265": {
         "decode": "-hwaccel cuda -hwaccel_device {gpu} -hwaccel_output_format cuda",
         "scale": "-vf scale_cuda=w={w}:h={h}:force_original_aspect_ratio=decrease:force_divisible_by=2",
-        "encode": "-c:v h264_nvenc -preset:v p4 -profile:v high -b:v {bitrate} -maxrate {maxrate} -bufsize {bufsize} -g 50",
+        "encode": "-c:v h264_nvenc -bf 0 -preset:v p4 -profile:v high -b:v {bitrate} -maxrate {maxrate} -bufsize {bufsize} -g 50",
     },
     "preset-vaapi": {
         "decode": "-hwaccel qsv -qsv_device {gpu} -hwaccel_output_format qsv -extra_hw_frames 32",
         "scale": "-vf vpp_qsv=w={w}:h={h}",
-        "encode": "-c:v h264_qsv -b:v {bitrate} -maxrate {maxrate} -bufsize {bufsize} -g 50 -async_depth:v 1",
+        "encode": "-c:v h264_qsv -bf 0 -b:v {bitrate} -maxrate {maxrate} -bufsize {bufsize} -g 50 -async_depth:v 1",
     },
     "preset-intel-qsv-h264": {
         "decode": "-hwaccel qsv -qsv_device {gpu} -hwaccel_output_format qsv -extra_hw_frames 32",
         "scale": "-vf vpp_qsv=w={w}:h={h}",
-        "encode": "-c:v h264_qsv -b:v {bitrate} -maxrate {maxrate} -bufsize {bufsize} -g 50 -async_depth:v 1",
+        "encode": "-c:v h264_qsv -bf 0 -b:v {bitrate} -maxrate {maxrate} -bufsize {bufsize} -g 50 -async_depth:v 1",
     },
     "preset-intel-qsv-h265": {
         "decode": "-hwaccel qsv -qsv_device {gpu} -hwaccel_output_format qsv -extra_hw_frames 32",
         "scale": "-vf vpp_qsv=w={w}:h={h}",
-        "encode": "-c:v h264_qsv -b:v {bitrate} -maxrate {maxrate} -bufsize {bufsize} -g 50 -async_depth:v 1",
+        "encode": "-c:v h264_qsv -bf 0 -b:v {bitrate} -maxrate {maxrate} -bufsize {bufsize} -g 50 -async_depth:v 1",
     },
     "preset-rkmpp": {
         "decode": "-hwaccel rkmpp -hwaccel_output_format drm_prime",
         "scale": "-vf scale_rkrga=w={w}:h={h}:format=yuv420p:force_original_aspect_ratio=0",
-        "encode": "-c:v h264_rkmpp -profile:v high -b:v {bitrate} -maxrate {maxrate} -bufsize {bufsize} -g 50",
+        "encode": "-c:v h264_rkmpp -bf 0 -profile:v high -b:v {bitrate} -maxrate {maxrate} -bufsize {bufsize} -g 50",
     },
     "preset-rk-h264": {
         "decode": "-hwaccel rkmpp -hwaccel_output_format drm_prime",
         "scale": "-vf scale_rkrga=w={w}:h={h}:format=yuv420p:force_original_aspect_ratio=0",
-        "encode": "-c:v h264_rkmpp -profile:v high -b:v {bitrate} -maxrate {maxrate} -bufsize {bufsize} -g 50",
+        "encode": "-c:v h264_rkmpp -bf 0 -profile:v high -b:v {bitrate} -maxrate {maxrate} -bufsize {bufsize} -g 50",
     },
     "preset-rk-h265": {
         "decode": "-hwaccel rkmpp -hwaccel_output_format drm_prime",
         "scale": "-vf scale_rkrga=w={w}:h={h}:format=yuv420p:force_original_aspect_ratio=0",
-        "encode": "-c:v h264_rkmpp -profile:v high -b:v {bitrate} -maxrate {maxrate} -bufsize {bufsize} -g 50",
+        "encode": "-c:v h264_rkmpp -bf 0 -profile:v high -b:v {bitrate} -maxrate {maxrate} -bufsize {bufsize} -g 50",
     },
     "preset-rpi-64-h264": {
         "decode": "",
         "scale": "-vf scale={w}:{h}:force_original_aspect_ratio=decrease:force_divisible_by=2",
-        "encode": "-c:v h264_v4l2m2m -b:v {bitrate} -g 50",
+        "encode": "-c:v h264_v4l2m2m -bf 0 -b:v {bitrate} -g 50",
     },
     "preset-rpi-64-h265": {
         "decode": "",
         "scale": "-vf scale={w}:{h}:force_original_aspect_ratio=decrease:force_divisible_by=2",
-        "encode": "-c:v h264_v4l2m2m -b:v {bitrate} -g 50",
+        "encode": "-c:v h264_v4l2m2m -bf 0 -b:v {bitrate} -g 50",
     },
     "preset-jetson-h264": {
         "decode": "",
         "scale": "-vf scale={w}:{h}:force_original_aspect_ratio=decrease:force_divisible_by=2",
-        "encode": "-c:v h264_nvmpi -profile high -b:v {bitrate} -g 50",
+        "encode": "-c:v h264_nvmpi -bf 0 -profile high -b:v {bitrate} -g 50",
     },
     "preset-jetson-h265": {
         "decode": "",
         "scale": "-vf scale={w}:{h}:force_original_aspect_ratio=decrease:force_divisible_by=2",
-        "encode": "-c:v h264_nvmpi -profile high -b:v {bitrate} -g 50",
+        "encode": "-c:v h264_nvmpi -bf 0 -profile high -b:v {bitrate} -g 50",
     },
 }
 
@@ -94,7 +104,7 @@ HWACCEL_TEMPLATES = {
 HWACCEL_TEMPLATES["default"] = {
     "decode": "",
     "scale": "-vf scale={w}:{h}:force_original_aspect_ratio=decrease:force_divisible_by=2",
-    "encode": "-c:v libx264 -preset:v superfast -tune:v zerolatency -b:v {bitrate} -maxrate {maxrate} -bufsize {bufsize} -g 50",
+    "encode": "-c:v libx264 -bf 0 -preset:v superfast -tune:v zerolatency -b:v {bitrate} -maxrate {maxrate} -bufsize {bufsize} -g 50",
 }
 
 
@@ -150,6 +160,10 @@ class ABRTranscoder:
             if lock and not lock.locked():
                 del self._segment_locks[key]
 
+    def _template(self) -> dict:
+        """ffmpeg argument template for the configured hwaccel preset."""
+        return HWACCEL_TEMPLATES.get(self.hwaccel_preset, HWACCEL_TEMPLATES["default"])
+
     def cache_path_for(
         self,
         recording_path: str,
@@ -157,8 +171,16 @@ class ABRTranscoder:
         clip_from_ms: int | None = None,
         duration_ms: int | None = None,
     ) -> Path:
-        """Deterministic cache path for a recording+tier+clip combination."""
-        key = f"{recording_path}:{tier.name}:{clip_from_ms}:{duration_ms}"
+        """Deterministic cache path for a recording+tier+clip combination.
+
+        The encoder arguments are part of the key: a segment produced by an
+        older configuration would otherwise be served forever from cache, long
+        after the settings that produced it were corrected.
+        """
+        key = (
+            f"{recording_path}:{tier.name}:{clip_from_ms}:{duration_ms}"
+            f":{self._template()['encode']}"
+        )
         h = hashlib.sha256(key.encode()).hexdigest()[:16]
         basename = Path(recording_path).stem
         return self.cache_dir / f"{basename}_{tier.name}_{h}.ts"
@@ -238,8 +260,7 @@ class ABRTranscoder:
         duration_ms: int | None = None,
     ) -> list[str]:
         """Build ffmpeg command for transcoding a segment."""
-        preset = self.hwaccel_preset
-        template = HWACCEL_TEMPLATES.get(preset, HWACCEL_TEMPLATES["default"])
+        template = self._template()
 
         kbps = _parse_bitrate_kbps(tier.bitrate)
         params = {

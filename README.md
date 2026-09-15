@@ -304,6 +304,10 @@ The solution: bypass nginx-vod-module entirely for ABR. The sidecar generates it
 
 VAAPI's `scale_vaapi` filter fails with "Cannot allocate memory" when Frigate is simultaneously using the GPU for object detection. The GPU runs out of surface memory for a second decode+scale+encode pipeline. QSV (Intel Quick Sync) uses a different memory management model (libmfx/oneVPL) and doesn't have this contention issue, even on the same Intel GPU. So the `preset-vaapi` template maps to QSV decode + vpp_qsv scale + h264_qsv encode for VOD transcoding. Live transcoding is handled by go2rtc separately.
 
+### Why are B-frames disabled in every encode template?
+
+Camera recordings are variable frame rate. A camera that nominally sends 16 fps regularly leaves a few hundred ms between frames, and an encoder that reorders frames computes each B-frame's DTS from a constant frame duration. On a long frame interval that DTS lands before the previous one, and the mpegts muxer silently repairs the non-monotonic value by bumping it to prev + 1 tick (11 us). Safari stops decoding at the first run of those samples: the picture freezes or never appears while audio keeps playing and the spinner stays up. Chrome decodes the same stream without complaint, so ABR qualities looked fine everywhere except WebKit. `-bf 0` removes frame reordering, DTS becomes PTS, and the muxer has nothing to repair. The cost is a few percent of bitrate efficiency; the encoder arguments are part of the segment cache key, so changing them invalidates segments produced by the old settings.
+
 ### Why does quality switching reload the page?
 
 Frigate's MSEPlayer and WebRTCPlayer don't auto-reconnect when WebSockets are closed externally. Their internal state machines have conditions that prevent reconnection. I tried faking visibility changes and closing sockets directly, but the players either ignored it or entered long error-recovery loops. A page reload is the only reliable way to switch quality, and since the setting is stored in localStorage, the new page load picks it up immediately.

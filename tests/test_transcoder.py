@@ -54,6 +54,20 @@ class TestHwaccelTemplates:
     def test_vaapi_template_exists(self):
         assert "preset-vaapi" in HWACCEL_TEMPLATES
 
+    def test_every_template_disables_b_frames(self):
+        """B-frames break Safari on these recordings.
+
+        Frigate's source files are variable frame rate (camera jitter of a few
+        hundred ms is normal). A reordering encoder derives each B-frame's DTS
+        from a constant frame duration, so on a long frame interval the DTS
+        goes backwards and the mpegts muxer bumps it to prev+1 tick. Safari's
+        decoder stops after the first such run of samples - video freezes while
+        audio keeps playing. Chrome tolerates it, which is why this only shows
+        up on WebKit.
+        """
+        for name, template in HWACCEL_TEMPLATES.items():
+            assert "-bf 0" in template["encode"], f"{name} does not disable B-frames"
+
     def test_templates_format_without_error(self):
         params = {
             "gpu": "0",
@@ -92,6 +106,20 @@ class TestCachePath:
         p1 = t.cache_path_for("/recordings/a.mp4", tier, clip_from_ms=0, duration_ms=10000)
         p2 = t.cache_path_for("/recordings/a.mp4", tier, clip_from_ms=5000, duration_ms=10000)
         assert p1 != p2
+
+    def test_encode_args_change_invalidates_cache(self, tmp_path):
+        """Segments cached by an older encoder configuration must not be reused:
+        they may carry the timestamps this encoder change exists to avoid."""
+        tier = QualityTier("720p", 1280, 720, "2000k")
+        t = ABRTranscoder("/usr/bin/ffmpeg", "default", 0, str(tmp_path))
+        before = t.cache_path_for("/recordings/a.mp4", tier)
+        original = HWACCEL_TEMPLATES["default"]["encode"]
+        try:
+            HWACCEL_TEMPLATES["default"]["encode"] = original + " -bf 0"
+            after = t.cache_path_for("/recordings/a.mp4", tier)
+        finally:
+            HWACCEL_TEMPLATES["default"]["encode"] = original
+        assert before != after
 
     def test_path_is_ts(self, tmp_path):
         t = ABRTranscoder("/usr/bin/ffmpeg", "default", 0, str(tmp_path))
@@ -168,6 +196,13 @@ class TestBuildCmd:
         cmd = t._build_cmd("/in.mp4", "/out.mp4", self.tier)
         cmd_str = " ".join(cmd)
         assert "libx264" in cmd_str
+
+    def test_hwaccel_cmd_disables_b_frames(self):
+        for preset in ("preset-vaapi", "preset-nvidia", "preset-rkmpp", "default"):
+            t = ABRTranscoder("/usr/bin/ffmpeg", preset, 0, "/tmp/cache")
+            cmd = t._build_cmd("/in.mp4", "/out.ts", self.tier)
+            idx = cmd.index("-bf")
+            assert cmd[idx + 1] == "0", f"{preset}: {' '.join(cmd)}"
 
     def test_output_format_mpegts(self):
         cmd = self.transcoder._build_cmd("/in.mp4", "/out.ts", self.tier)
