@@ -8,14 +8,63 @@ from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
+# Bump this whenever a release changes what a cached segment contains - encoder
+# arguments, container, timestamp handling, anything a player could notice. The
+# version is part of every cache key and the sidecar wipes the cache directory
+# when it does not match the one recorded there, so a segment produced by an
+# incompatible build is never served. Forgetting to bump it means users keep
+# being served the old bytes until the TTL expires them.
+CACHE_VERSION = 1
+
+# Records the version the cache directory was written by.
+VERSION_FILE = "cache_version"
+
 
 class ABRCacheManager:
-    def __init__(self, cache_dir: str, max_size_gb: float = 10.0, ttl_hours: int = 24):
+    def __init__(
+        self,
+        cache_dir: str,
+        max_size_gb: float = 10.0,
+        ttl_hours: int = 24,
+        clear_on_start: bool = False,
+    ):
         self.cache_dir = Path(cache_dir)
         self.cache_dir.mkdir(parents=True, exist_ok=True)
         self.max_size_bytes = int(max_size_gb * 1024 * 1024 * 1024)
         self.ttl_seconds = ttl_hours * 3600
+        self.clear_on_start = clear_on_start
         self._task: asyncio.Task | None = None
+
+    def purge_if_stale(self) -> int:
+        """Drop cached segments an incompatible build left behind.
+
+        Called once at startup, before anything is served. A cache directory
+        with no version marker predates versioning, so nothing about its
+        contents can be assumed and it goes too. Returns files removed.
+        """
+        marker = self.cache_dir / VERSION_FILE
+        try:
+            recorded = marker.read_text().strip()
+        except OSError:
+            recorded = ""
+
+        removed = 0
+        if self.clear_on_start:
+            removed = self.cleanup_all()
+            logger.info("Cleared %d cached segments (clear_on_start)", removed)
+        elif recorded != str(CACHE_VERSION):
+            removed = self.cleanup_all()
+            if removed:
+                logger.info(
+                    "Cleared %d cached segments written by cache version %s (now %d)",
+                    removed, recorded or "unknown", CACHE_VERSION,
+                )
+
+        try:
+            marker.write_text(f"{CACHE_VERSION}\n")
+        except OSError:
+            logger.warning("Could not record cache version in %s", marker)
+        return removed
 
     def start(self) -> None:
         """Start the background cleanup loop."""

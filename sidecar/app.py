@@ -199,7 +199,9 @@ async def lifespan(app: FastAPI):
         cache_dir=cache_dir,
         max_size_gb=cache_cfg.get("max_size_gb", 10.0),
         ttl_hours=cache_cfg.get("ttl_hours", 24),
+        clear_on_start=bool(cache_cfg.get("clear_on_start", False)),
     )
+    cache_manager.purge_if_stale()
     cache_manager.start()
 
     # Register live stream variants in go2rtc

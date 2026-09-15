@@ -235,6 +235,7 @@ cache:
   path: /tmp/cache/abr
   max_size_gb: 10.0    # LRU eviction when exceeded
   ttl_hours: 24         # Cached segments expire after this
+  clear_on_start: false # Start every container with an empty cache
 
 max_concurrent_transcodes: 2   # Limits simultaneous GPU transcodes
 
@@ -283,6 +284,7 @@ curl "http://localhost:5000/abr/debug/transcode?camera=YOUR_CAMERA&quality=480p"
 | Grey/black screen on ABR quality (live) | **Firefox autoplay restriction.** Click the lock icon in address bar -> Permissions -> Autoplay -> Allow Audio and Video. Chrome works without this. |
 | Transcoding fails | Run `curl "localhost:5000/abr/debug/transcode?camera=YOUR_CAMERA&quality=480p"` and check `ffmpeg_exit_code` and `ffmpeg_stderr`. |
 | Cache growing too large | Lower `cache.max_size_gb` or `cache.ttl_hours` in `config.yml`. |
+| Suspect stale segments after an update | The sidecar wipes the cache when its `CACHE_VERSION` changes, so this should not happen. Set `cache.clear_on_start: true` to start every container with an empty cache. Re-transcoding a segment costs a second or two. |
 
 ## Frigate update compatibility
 
@@ -306,7 +308,7 @@ VAAPI's `scale_vaapi` filter fails with "Cannot allocate memory" when Frigate is
 
 ### Why are B-frames disabled in every encode template?
 
-Camera recordings are variable frame rate. A camera that nominally sends 16 fps regularly leaves a few hundred ms between frames, and an encoder that reorders frames computes each B-frame's DTS from a constant frame duration. On a long frame interval that DTS lands before the previous one, and the mpegts muxer silently repairs the non-monotonic value by bumping it to prev + 1 tick (11 us). Safari stops decoding at the first run of those samples: the picture freezes or never appears while audio keeps playing and the spinner stays up. Chrome decodes the same stream without complaint, so ABR qualities looked fine everywhere except WebKit. `-bf 0` removes frame reordering, DTS becomes PTS, and the muxer has nothing to repair. The cost is a few percent of bitrate efficiency; the encoder arguments are part of the segment cache key, so changing them invalidates segments produced by the old settings.
+Camera recordings are variable frame rate. A camera that nominally sends 16 fps regularly leaves a few hundred ms between frames, and an encoder that reorders frames computes each B-frame's DTS from a constant frame duration. On a long frame interval that DTS lands before the previous one, and the mpegts muxer silently repairs the non-monotonic value by bumping it to prev + 1 tick (11 us). Safari stops decoding at the first run of those samples: the picture freezes or never appears while audio keeps playing and the spinner stays up. Chrome decodes the same stream without complaint, so ABR qualities looked fine everywhere except WebKit. `-bf 0` removes frame reordering, DTS becomes PTS, and the muxer has nothing to repair. At the capped bitrate the tiers run at there is no quality loss - the reordering encode was undershooting the cap anyway - but the same picture costs roughly 10-18% more bits, so segments sit closer to their tier cap. Segments cached by an earlier build are dropped on the first start after the update, because the change came with a `CACHE_VERSION` bump.
 
 ### Why does quality switching reload the page?
 

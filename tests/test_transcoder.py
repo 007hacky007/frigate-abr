@@ -11,6 +11,8 @@ import pytest
 # Add sidecar to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
+from sidecar import transcoder as transcoder_mod
+from sidecar.cache import CACHE_VERSION
 from sidecar.transcoder import (
     ABRTranscoder,
     HWACCEL_TEMPLATES,
@@ -107,18 +109,19 @@ class TestCachePath:
         p2 = t.cache_path_for("/recordings/a.mp4", tier, clip_from_ms=5000, duration_ms=10000)
         assert p1 != p2
 
-    def test_encode_args_change_invalidates_cache(self, tmp_path):
-        """Segments cached by an older encoder configuration must not be reused:
-        they may carry the timestamps this encoder change exists to avoid."""
+    def test_cache_version_is_part_of_the_key(self, tmp_path):
+        """Segments cached by an incompatible build must not be reused. The
+        sidecar wipes the cache directory when CACHE_VERSION changes; keying on
+        it too means a cache that escaped the wipe still cannot be served."""
         tier = QualityTier("720p", 1280, 720, "2000k")
         t = ABRTranscoder("/usr/bin/ffmpeg", "default", 0, str(tmp_path))
         before = t.cache_path_for("/recordings/a.mp4", tier)
-        original = HWACCEL_TEMPLATES["default"]["encode"]
+        monkeypatch = pytest.MonkeyPatch()
+        monkeypatch.setattr(transcoder_mod, "CACHE_VERSION", CACHE_VERSION + 1)
         try:
-            HWACCEL_TEMPLATES["default"]["encode"] = original + " -bf 0"
             after = t.cache_path_for("/recordings/a.mp4", tier)
         finally:
-            HWACCEL_TEMPLATES["default"]["encode"] = original
+            monkeypatch.undo()
         assert before != after
 
     def test_path_is_ts(self, tmp_path):

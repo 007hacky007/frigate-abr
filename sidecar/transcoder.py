@@ -8,6 +8,8 @@ import shutil
 from dataclasses import dataclass
 from pathlib import Path
 
+from .cache import CACHE_VERSION
+
 logger = logging.getLogger(__name__)
 
 
@@ -173,14 +175,11 @@ class ABRTranscoder:
     ) -> Path:
         """Deterministic cache path for a recording+tier+clip combination.
 
-        The encoder arguments are part of the key: a segment produced by an
-        older configuration would otherwise be served forever from cache, long
-        after the settings that produced it were corrected.
+        CACHE_VERSION is part of the key, so segments produced by a build
+        that encoded them differently cannot be served even if they survived
+        the startup purge (a cache directory restored from a backup, say).
         """
-        key = (
-            f"{recording_path}:{tier.name}:{clip_from_ms}:{duration_ms}"
-            f":{self._template()['encode']}"
-        )
+        key = f"{recording_path}:{tier.name}:{clip_from_ms}:{duration_ms}:v{CACHE_VERSION}"
         h = hashlib.sha256(key.encode()).hexdigest()[:16]
         basename = Path(recording_path).stem
         return self.cache_dir / f"{basename}_{tier.name}_{h}.ts"
