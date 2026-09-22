@@ -10,6 +10,8 @@ a `v` tag when you want to stay on a known build.
 
 ## [Unreleased]
 
+## [1.0.1] - 2026-09-22
+
 ### Fixed
 
 - The recording player on Safari, including every browser on iOS, offered playback
@@ -48,5 +50,6 @@ First tagged release, built on Frigate 0.18.0. Earlier history is in the git log
   measurable quality, but the same picture takes roughly 10 to 18 percent more
   bits, so segments now sit closer to their cap.
 
-[Unreleased]: https://github.com/007hacky007/frigate-abr/compare/v1.0.0...HEAD
+[Unreleased]: https://github.com/007hacky007/frigate-abr/compare/v1.0.1...HEAD
+[1.0.1]: https://github.com/007hacky007/frigate-abr/releases/tag/v1.0.1
 [1.0.0]: https://github.com/007hacky007/frigate-abr/releases/tag/v1.0.0
