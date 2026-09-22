@@ -112,5 +112,24 @@ if ! grep -q "abr/static/inject.js" "$NGINX_CONF"; then
     fi
 fi
 
+# 4. Offer the full playback speed list on Safari. Frigate hard-codes
+#   isSafari?[.5,1,2]:[.5,1,2,4,8,16]
+# in the recording player and the UI settings bundles, a cap left over from when
+# Safari played recordings through native HLS. Since 0.17 every browser plays
+# through hls.js, so Safari gets the same list. The JS bundles already pass
+# through the sub_filter of 'location /' (sub_filter_types application/javascript),
+# so this is one more rewrite there. If a Frigate release changes the literal, the
+# filter simply stops matching and the stock list is served.
+if ! grep -q "isSafari?\[.5,1,2\]:" "$NGINX_CONF"; then
+    if grep -q "sub_filter '<body>'" "$NGINX_CONF"; then
+        sed -i "/sub_filter '<body>'/i\\
+            sub_filter 'isSafari?[.5,1,2]:[.5,1,2,4,8,16]' 'isSafari?[.5,1,2,4,8,16]:[.5,1,2,4,8,16]';" "$NGINX_CONF" \
+            && echo "[ABR] Added sub_filter for Safari playback speeds." \
+            || echo "[ABR] WARNING: Failed to add sub_filter for Safari playback speeds."
+    else
+        echo "[ABR] WARNING: Could not find sub_filter '<body>' anchor for playback speed patch."
+    fi
+fi
+
 echo "[ABR] nginx.conf patch complete."
 exit 0

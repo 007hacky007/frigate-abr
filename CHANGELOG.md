@@ -10,6 +10,16 @@ a `v` tag when you want to stay on a known build.
 
 ## [Unreleased]
 
+### Fixed
+
+- The recording player on Safari, including every browser on iOS, offered playback
+  speeds only up to 2x while other browsers go up to 16x. Frigate hard-codes the
+  shorter list for Safari, a leftover from when Safari played recordings through
+  native HLS; it now plays through hls.js like everything else, so the overlay
+  serves the full 0.5x to 16x list, in the player and in the default playback
+  rate setting. Browsers keep Frigate's JS bundles cached for a year, so one that
+  already has them needs its website data cleared once to pick up the change.
+
 ## [1.0.0] - 2026-09-15
 
 First tagged release, built on Frigate 0.18.0. Earlier history is in the git log.
