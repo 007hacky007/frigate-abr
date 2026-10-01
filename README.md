@@ -53,9 +53,9 @@ See the [configuration reference](#configuration-reference) for all parameters.
 
 ## Why this exists
 
-Frigate 0.19 adds its own quality switching for recordings ([PR #24009](https://github.com/blakeblackshear/frigate/pull/24009)): a second, lower-quality camera stream is recorded around the clock next to the main one, and the History player switches between the two. Asked whether on-demand transcoding could follow, the maintainers answered that there are no plans for it ([#18497](https://github.com/blakeblackshear/frigate/issues/18497#issuecomment-5425096912)) and that they point users who want a transcoded option here.
+Frigate 0.19 adds its own quality switching, in two parts. For recordings ([PR #24009](https://github.com/blakeblackshear/frigate/pull/24009)), a second, lower-quality camera stream is recorded around the clock next to the main one, and the History player switches between the two. For live view ([PR #24519](https://github.com/blakeblackshear/frigate/pull/24519)), go2rtc transcodes lower-quality streams while someone is watching and the player picks one automatically. On-demand transcoding of recordings is the part Frigate does not do: asked about it, the maintainers answered that there are no plans for it ([#18497](https://github.com/blakeblackshear/frigate/issues/18497#issuecomment-5425096912)) and that they point users who want a transcoded option here.
 
-frigate-abr transcodes the original recording on demand instead. Advantages over the built-in approach:
+frigate-abr transcodes the original recording on demand instead. Advantages over the recorded sub stream:
 
 - **No extra disk space.** Nothing is recorded twice. Segments are transcoded when someone presses play and kept in a bounded cache (10 GB, 24 h by default), instead of a second stream written to disk around the clock.
 - **Custom tiers, independent of the camera.** Frigate's Low quality is whatever sub stream the camera provides, and many cameras (Reolink, for one) offer a single sub stream. frigate-abr tiers are defined in config, as many as you want, from any camera: 1080p, 720p and 480p by default.
@@ -73,7 +73,7 @@ frigate-abr transcodes the original recording on demand instead. Advantages over
 | Browser support | Every tier is H.264, which every browser decodes | Low plays only if the browser decodes the sub stream's codec |
 | Cameras without a usable sub stream | Transcode runs only while someone watches | Continuous go2rtc transcode of the main stream, constant GPU usage |
 | Audio support | Copied over from main stream | A sub stream without audio means silent playback |
-| Live view | Tiers registered in go2rtc automatically, capped at the tier bitrate | Not part of [PR #24009](https://github.com/blakeblackshear/frigate/pull/24009) |
+| Live view | Tiers registered in go2rtc automatically, capped at the tier bitrate (Frigate 0.17 and 0.18) | Built in from 0.19 ([PR #24519](https://github.com/blakeblackshear/frigate/pull/24519)): go2rtc transcodes per-camera qualities on demand, with automatic selection. The release of frigate-abr built on 0.19 will leave live view to Frigate and keep the recording tiers |
 | Hardware needed | A transcoder: Intel QSV/VAAPI, NVENC, ROCm, or CPU at low tiers (a Pi 5 runs one software transcode) | None beyond the camera's encoder |
 | Frigate version | 0.17.1+<sup>\*</sup> | 0.19+ |
 
