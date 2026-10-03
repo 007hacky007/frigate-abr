@@ -10,6 +10,8 @@ a `v` tag when you want to stay on a known build.
 
 ## [Unreleased]
 
+## [1.0.2] - 2026-10-03
+
 ### Fixed
 
 - The quality gear no longer appears on preview clips or plain-file videos.
@@ -59,6 +61,7 @@ First tagged release, built on Frigate 0.18.0. Earlier history is in the git log
   measurable quality, but the same picture takes roughly 10 to 18 percent more
   bits, so segments now sit closer to their cap.
 
-[Unreleased]: https://github.com/007hacky007/frigate-abr/compare/v1.0.1...HEAD
+[Unreleased]: https://github.com/007hacky007/frigate-abr/compare/v1.0.2...HEAD
+[1.0.2]: https://github.com/007hacky007/frigate-abr/releases/tag/v1.0.2
 [1.0.1]: https://github.com/007hacky007/frigate-abr/releases/tag/v1.0.1
 [1.0.0]: https://github.com/007hacky007/frigate-abr/releases/tag/v1.0.0
