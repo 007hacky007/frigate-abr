@@ -7,6 +7,19 @@
   z-index: 60;
 }
 
+@media (hover: hover) and (pointer: fine) {
+  .abr-quality-selector {
+    opacity: 0;
+    transition: opacity 0.15s ease;
+  }
+
+  :hover > .abr-quality-selector,
+  .abr-quality-selector:focus-within,
+  .abr-quality-selector.abr-open {
+    opacity: 1;
+  }
+}
+
 .abr-quality-btn {
   display: flex;
   align-items: center;

@@ -10,6 +10,15 @@ a `v` tag when you want to stay on a known build.
 
 ## [Unreleased]
 
+### Fixed
+
+- The quality gear no longer appears on preview clips or plain-file videos.
+
+### Changed
+
+- On desktop, the quality gear appears while hovering the player, focusing the
+  selector, or keeping its menu open. It stays visible on touch devices.
+
 ## [1.0.1] - 2026-09-22
 
 ### Fixed

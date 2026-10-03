@@ -182,6 +182,7 @@
       var menus = document.querySelectorAll(".abr-quality-menu");
       for (var m = 0; m < menus.length; m++) {
         menus[m].style.display = "none";
+        menus[m].parentElement.classList.remove("abr-open");
       }
     });
   }
@@ -413,11 +414,19 @@
     processElement(document.body);
   }
 
+  // Frigate's preview clips and exports declare their file through a <source>
+  // child; the real players (hls.js, MSE, WebRTC) never do, and only they can
+  // be switched to an ABR tier.
+  function isSwitchablePlayer(videoEl) {
+    return !videoEl.querySelector("source");
+  }
+
   function processElement(el) {
     // Look for video containers that don't already have our selector
     var videos = el.querySelectorAll ? el.querySelectorAll("video") : [];
     for (var i = 0; i < videos.length; i++) {
       var video = videos[i];
+      if (!isSwitchablePlayer(video)) continue;
       var container = findPlayerContainer(video);
       if (container && !container.querySelector(".abr-quality-selector")) {
         injectQualitySelector(container, video);
@@ -425,7 +434,7 @@
     }
 
     // Also check if el itself is a video
-    if (el.tagName === "VIDEO") {
+    if (el.tagName === "VIDEO" && isSwitchablePlayer(el)) {
       var cont = findPlayerContainer(el);
       if (cont && !cont.querySelector(".abr-quality-selector")) {
         injectQualitySelector(cont, el);
@@ -527,6 +536,7 @@
           }
           item.classList.add("active");
           menu.style.display = "none";
+          wrapper.classList.remove("abr-open");
         });
         menu.appendChild(item);
       })(options[k]);
@@ -535,6 +545,11 @@
     btn.addEventListener("click", function (e) {
       e.stopPropagation();
       menu.style.display = menu.style.display === "none" ? "block" : "none";
+      if (menu.style.display === "block") {
+        wrapper.classList.add("abr-open");
+      } else {
+        wrapper.classList.remove("abr-open");
+      }
     });
 
     wrapper.appendChild(btn);
