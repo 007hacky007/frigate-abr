@@ -10,6 +10,11 @@ a `v` tag when you want to stay on a known build.
 
 ## [Unreleased]
 
+### Fixed
+
+- Restore the recording quality selector on iPhone and iPad. hls.js uses a
+  blob-backed source element on iOS, which the overlay mistook for a preview.
+
 ## [1.0.3] - 2026-10-14
 
 ### Changed

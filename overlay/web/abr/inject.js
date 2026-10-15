@@ -414,11 +414,12 @@
     processElement(document.body);
   }
 
-  // Frigate's preview clips and exports declare their file through a <source>
-  // child; the real players (hls.js, MSE, WebRTC) never do, and only they can
-  // be switched to an ABR tier.
+  // Preview clips and exports use file-backed <source> children. On iOS,
+  // hls.js also uses a <source> child for ManagedMediaSource, but its blob URL
+  // is a switchable recording stream rather than a preview file.
   function isSwitchablePlayer(videoEl) {
-    return !videoEl.querySelector("source");
+    var source = videoEl.querySelector("source");
+    return !source || /^blob:/.test(source.src || "");
   }
 
   function processElement(el) {

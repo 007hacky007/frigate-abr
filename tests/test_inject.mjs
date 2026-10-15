@@ -70,29 +70,6 @@ function isAutoplayBlocked(err) {
   return !!err && err.name === "NotAllowedError";
 }
 
-function isSwitchablePlayer(videoEl) {
-  return !videoEl.querySelector("source");
-}
-
-describe("isSwitchablePlayer", () => {
-  it("rejects preview and plain-file videos with a source child", () => {
-    var video = {
-      querySelector: (selector) => selector === "source" ? { src: "/clips/previews/clip.mp4" } : null,
-    };
-    assert.equal(isSwitchablePlayer(video), false);
-  });
-
-  it("accepts HLS and MSE players with a blob src and no source child", () => {
-    var video = { src: "blob:player", querySelector: () => null };
-    assert.equal(isSwitchablePlayer(video), true);
-  });
-
-  it("accepts WebRTC players with srcObject and no source child", () => {
-    var video = { srcObject: {}, querySelector: () => null };
-    assert.equal(isSwitchablePlayer(video), true);
-  });
-});
-
 // --- VOD URL Detection Tests ---
 
 describe("isVodUrl", () => {
@@ -386,12 +363,32 @@ function extractFunction(name) {
   return new Function("return (" + m[0] + ")")();
 }
 
-it("shipped isSwitchablePlayer matches the mirrored helper", () => {
-  const shipped = extractFunction("isSwitchablePlayer");
-  for (const source of [null, { src: "/clips/previews/clip.mp4" }, {}]) {
-    const video = { querySelector: (selector) => selector === "source" ? source : null };
-    assert.equal(shipped(video), isSwitchablePlayer(video));
+describe("isSwitchablePlayer", () => {
+  const isSwitchablePlayer = extractFunction("isSwitchablePlayer");
+
+  it("accepts iPhone hls.js players with a blob source child", () => {
+    // ManagedMediaSource attaches through <source>, even with type video/mp4.
+    const source = { src: "blob:https://frigate.invalid/media", type: "video/mp4" };
+    const video = { querySelector: () => source };
+    assert.equal(isSwitchablePlayer(video), true);
+  });
+
+  for (const src of ["/clips/previews/clip.mp4", "/exports/clip.mp4", "", undefined]) {
+    it("rejects file or uninitialized source children: " + String(src), () => {
+      const video = { querySelector: () => ({ src }) };
+      assert.equal(isSwitchablePlayer(video), false);
+    });
   }
+
+  it("accepts HLS and MSE players with a blob src and no source child", () => {
+    const video = { src: "blob:player", querySelector: () => null };
+    assert.equal(isSwitchablePlayer(video), true);
+  });
+
+  it("accepts WebRTC players with srcObject and no source child", () => {
+    const video = { srcObject: {}, querySelector: () => null };
+    assert.equal(isSwitchablePlayer(video), true);
+  });
 });
 
 describe("parseCachedConfig", () => {
