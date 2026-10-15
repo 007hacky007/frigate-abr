@@ -444,8 +444,16 @@
   }
 
   function findPlayerContainer(videoEl) {
-    // Walk up to find the relative/absolute positioned container
+    // Frigate hides the recording zoom layer while loading. Keep our controls
+    // on its outer frame, where they remain available before playback starts.
+    // Live camera frames already stay visible while their video is loading.
     var el = videoEl.parentElement;
+    var zoom = videoEl.closest(".react-transform-wrapper");
+    if (zoom && zoom.parentElement && !videoEl.closest("[data-camera]")) {
+      el = zoom.parentElement;
+    }
+
+    // Walk up to find the relative/absolute positioned container
     var depth = 0;
     while (el && depth < 8) {
       var style = window.getComputedStyle(el);

@@ -356,12 +356,49 @@ const injectSrc = readFileSync(
   "utf8"
 );
 
-function extractFunction(name) {
+function extractFunction(name, bindings = {}) {
   const re = new RegExp("function " + name + "\\s*\\([^)]*\\)\\s*\\{[\\s\\S]*?\\n  \\}");
   const m = injectSrc.match(re);
   assert.ok(m, name + " not found in inject.js");
-  return new Function("return (" + m[0] + ")")();
+  return new Function(...Object.keys(bindings), "return (" + m[0] + ")")(...Object.values(bindings));
 }
+
+describe("findPlayerContainer", () => {
+  const findPlayerContainer = extractFunction("findPlayerContainer", {
+    window: { getComputedStyle: (el) => el.style },
+  });
+
+  for (const display of ["none", "block"]) {
+    it("uses the recording frame outside the zoom layer with display " + display, () => {
+      const frame = { style: { position: "relative" } };
+      const zoom = { parentElement: frame, style: { position: "relative", display } };
+      const inner = { parentElement: zoom, style: { position: "relative" } };
+      const video = {
+        parentElement: inner,
+        closest: (selector) => selector === ".react-transform-wrapper" ? zoom : null,
+      };
+      assert.equal(findPlayerContainer(video), frame);
+    });
+  }
+
+  it("keeps each live player's selector on its own camera frame", () => {
+    const outer = { style: { position: "relative" } };
+    const zoom = { parentElement: outer, style: { position: "relative" } };
+    const camera = { parentElement: zoom, style: { position: "relative" }, dataset: { camera: "camera" } };
+    const video = {
+      parentElement: camera,
+      closest: (selector) => selector === "[data-camera]" ? camera : zoom,
+    };
+    assert.equal(findPlayerContainer(video), camera);
+  });
+
+  it("retains the positioned container for players without a zoom layer", () => {
+    const frame = { style: { position: "relative" } };
+    const inner = { parentElement: frame, style: { position: "static" } };
+    const video = { parentElement: inner, closest: () => null };
+    assert.equal(findPlayerContainer(video), frame);
+  });
+});
 
 describe("isSwitchablePlayer", () => {
   const isSwitchablePlayer = extractFunction("isSwitchablePlayer");

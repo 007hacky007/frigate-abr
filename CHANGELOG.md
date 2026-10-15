@@ -14,6 +14,8 @@ a `v` tag when you want to stay on a known build.
 
 - Restore the recording quality selector on iPhone and iPad. hls.js uses a
   blob-backed source element on iOS, which the overlay mistook for a preview.
+- Keep the recording quality selector available while the video loads, so a
+  slower connection can switch to a lower quality before playback starts.
 
 ## [1.0.3] - 2026-10-14
 
