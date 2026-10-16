@@ -10,6 +10,14 @@ a `v` tag when you want to stay on a known build.
 
 ## [Unreleased]
 
+## [1.0.5] - 2026-10-16
+
+### Changed
+
+- Update the Frigate base from 0.18.1 to 0.18.2 for all image variants. This is
+  an upstream security release that closes two remote code execution paths
+  through go2rtc and tightens path checks in media authorization.
+
 ## [1.0.4] - 2026-10-15
 
 ### Fixed
@@ -77,7 +85,8 @@ First tagged release, built on Frigate 0.18.0. Earlier history is in the git log
   measurable quality, but the same picture takes roughly 10 to 18 percent more
   bits, so segments now sit closer to their cap.
 
-[Unreleased]: https://github.com/007hacky007/frigate-abr/compare/v1.0.4...HEAD
+[Unreleased]: https://github.com/007hacky007/frigate-abr/compare/v1.0.5...HEAD
+[1.0.5]: https://github.com/007hacky007/frigate-abr/releases/tag/v1.0.5
 [1.0.4]: https://github.com/007hacky007/frigate-abr/releases/tag/v1.0.4
 [1.0.3]: https://github.com/007hacky007/frigate-abr/releases/tag/v1.0.3
 [1.0.2]: https://github.com/007hacky007/frigate-abr/releases/tag/v1.0.2
