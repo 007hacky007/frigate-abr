@@ -10,6 +10,23 @@ a `v` tag when you want to stay on a known build.
 
 ## [Unreleased]
 
+## [1.0.6] - 2026-11-19
+
+### Changed
+
+- Update the Frigate base from 0.18.2 to 0.18.3 for all image variants. This is
+  an upstream security release: it replaces the bundled nginx 1.27.4, whose
+  HTTP/2 support allowed unauthenticated remote code execution as root
+  (CVE-2026-123007), with nginx 1.30.7, and it stops go2rtc `ffmpeg` and `ngrok`
+  options and `${VAR}` stream sources from running arbitrary commands unless
+  `GO2RTC_ALLOW_ARBITRARY_EXEC` is set. Upgrading is strongly recommended.
+
+### Removed
+
+- Drop the unused `/vod_abr/` nginx location, left over from an early design
+  that was never wired to the player. The video module in the new base warned
+  about it on every start.
+
 ## [1.0.5] - 2026-10-16
 
 ### Changed
@@ -85,7 +102,8 @@ First tagged release, built on Frigate 0.18.0. Earlier history is in the git log
   measurable quality, but the same picture takes roughly 10 to 18 percent more
   bits, so segments now sit closer to their cap.
 
-[Unreleased]: https://github.com/007hacky007/frigate-abr/compare/v1.0.5...HEAD
+[Unreleased]: https://github.com/007hacky007/frigate-abr/compare/v1.0.6...HEAD
+[1.0.6]: https://github.com/007hacky007/frigate-abr/releases/tag/v1.0.6
 [1.0.5]: https://github.com/007hacky007/frigate-abr/releases/tag/v1.0.5
 [1.0.4]: https://github.com/007hacky007/frigate-abr/releases/tag/v1.0.4
 [1.0.3]: https://github.com/007hacky007/frigate-abr/releases/tag/v1.0.3
